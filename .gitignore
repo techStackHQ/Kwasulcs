@@ -1,0 +1,11 @@
+# Credentials — never commit real config
+config.php
+
+# macOS metadata
+.DS_Store
+
+# Uploaded files
+private_uploads/
+
+# Composer dependencies (if added later)
+vendor/

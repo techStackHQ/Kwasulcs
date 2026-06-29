@@ -1,0 +1,856 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KWASU LCS — calendar.css
+   Matches the design tokens in style.css:
+     --bg:#0f172a  --panel:#fff  --primary:#07a701  --muted:#64748b
+     --line:#e2e8f0  --text:#0f172a  --danger:#dc2626
+     font: Inter, Segoe UI, Tahoma
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Notification badge on bell button ───────────────────────────────────── */
+.notif-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #dc2626;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    border-radius: 999px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* ── Controls row ─────────────────────────────────────────────────────────── */
+.cal-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.cal-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cal-month-label {
+    font-size: 20px;
+    font-weight: 800;
+    color: #0f172a;
+    min-width: 160px;
+    text-align: center;
+}
+
+.cal-filter-form select {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font: inherit;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+    min-width: 200px;
+}
+
+/* Legend */
+.cal-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    margin-left: auto;
+}
+
+.legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.legend-label {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+/* ── Calendar grid wrapper ────────────────────────────────────────────────── */
+.cal-grid-wrap {
+    padding: 0;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+/* Day-of-week header row */
+.cal-dow-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: linear-gradient(135deg, #07a701, #c08810e0);
+}
+
+.cal-dow {
+    text-align: center;
+    padding: 10px 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.92);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+/* Day cells grid */
+.cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-left: 1px solid #e2e8f0;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Individual day cell */
+.cal-day {
+    position: relative;
+    min-height: 110px;
+    padding: 6px 6px 28px 6px;
+    /* bottom pad makes room for the + button */
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
+    transition: background .12s;
+    vertical-align: top;
+}
+
+.cal-day:hover {
+    background: #f8fafc;
+}
+
+.cal-day--blank {
+    background: #f8fafc;
+    min-height: 110px;
+}
+
+/* Today highlight */
+.cal-day--today {
+    background: #f0fdf4;
+}
+
+.cal-day--today .cal-day-num {
+    background: #07a701;
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+}
+
+/* Day number */
+.cal-day-num {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 4px;
+    line-height: 26px;
+    padding: 0 3px;
+}
+
+/* Event chip inside a day cell */
+.cal-event-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    border: none;
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    padding: 3px 5px;
+    margin-bottom: 2px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: filter .15s;
+}
+
+.cal-event-chip:hover {
+    filter: brightness(.93);
+}
+
+.chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.chip-time {
+    color: #475569;
+    font-weight: 600;
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+.chip-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #0f172a;
+    font-weight: 500;
+}
+
+/* "+N more" chip */
+.cal-more-chip {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    color: #07a701;
+    text-align: left;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.cal-more-chip:hover {
+    background: #dcfce7;
+}
+
+/* "+" add-event button — bottom-right of cell, hidden until hover */
+.cal-add-btn {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: #07a701;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    font-weight: 300;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity .15s, transform .15s;
+}
+
+.cal-day:hover .cal-add-btn {
+    opacity: 1;
+}
+
+.cal-add-btn:hover {
+    transform: scale(1.15);
+    background: #059669;
+}
+
+/* ── Upcoming events list ─────────────────────────────────────────────────── */
+.cal-upcoming {
+    padding: 20px;
+}
+
+.cal-upcoming h2 {
+    margin: 0 0 16px;
+    font-size: 20px;
+}
+
+.cal-empty {
+    padding: 24px 0;
+    text-align: center;
+}
+
+/* upcoming-item is shared with course.php strip — we add calendar-specific tweaks */
+.upcoming-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid #e2e8f0;
+    border-left: 4px solid transparent;
+    padding-left: 12px;
+    transition: background .12s;
+    border-radius: 0 8px 8px 0;
+}
+
+.upcoming-item:first-child {
+    border-top: none;
+}
+
+.upcoming-item:hover {
+    background: #f8fafc;
+}
+
+.upcoming-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 40px;
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+}
+
+.udate-day {
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1;
+}
+
+.udate-mon {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.upcoming-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.upcoming-info strong {
+    display: block;
+    font-size: 15px;
+    color: #0f172a;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upcoming-desc {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.upcoming-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.ev-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+/* ── Modals ───────────────────────────────────────────────────────────────── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .55);
+    backdrop-filter: blur(3px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    /* hidden attribute controls visibility — no display:none override needed */
+}
+
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal-box {
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
+    width: min(520px, 100%);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modalIn .18s ease;
+}
+
+.modal-box--wide {
+    width: min(680px, 100%);
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.modal-close {
+    background: #f1f5f9;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    transition: background .15s, color .15s;
+    flex-shrink: 0;
+}
+
+.modal-close:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.modal-body {
+    padding: 18px 22px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-footer {
+    padding: 14px 22px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* ── Event detail modal ──────────────────────────────────────────────────── */
+.detail-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    text-transform: capitalize;
+}
+
+.detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid #f1f5f9;
+    font-size: 14px;
+    color: #0f172a;
+    line-height: 1.5;
+}
+
+.detail-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* ── Create/Edit form ────────────────────────────────────────────────────── */
+.form-grid-cal {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* Required star */
+.req {
+    color: #dc2626;
+    font-size: 12px;
+}
+
+/* Recurrence row */
+.recurrence-row {
+    padding: 10px 0 2px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Notification row */
+.notif-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    padding: 10px 0 2px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.notif-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: #475569;
+}
+
+.checkbox-label {
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #07a701;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+    .cal-controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .cal-legend {
+        margin-left: 0;
+    }
+
+    .cal-day {
+        min-height: 72px;
+        padding-bottom: 24px;
+    }
+
+    .chip-time {
+        display: none;
+        /* hide time label on small screens, keep dot + title */
+    }
+
+    .form-grid-cal {
+        grid-template-columns: 1fr;
+    }
+
+    .upcoming-actions {
+        flex-direction: column;
+        align-items: flex-end;
+    }
+}
+
+@media (max-width: 560px) {
+    .cal-days {
+        font-size: 11px;
+    }
+
+    .cal-day {
+        min-height: 56px;
+        padding: 4px 3px 22px 3px;
+    }
+
+    .cal-day-num {
+        font-size: 11px;
+    }
+
+    .cal-event-chip {
+        font-size: 10px;
+        padding: 2px 3px;
+    }
+
+    .chip-title {
+        display: none;
+        /* tiny screens: just show the coloured dot */
+    }
+
+    .cal-month-label {
+        font-size: 16px;
+        min-width: 120px;
+    }
+
+    .modal-box {
+        border-radius: 16px;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard additions
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Stats row */
+.dash-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    padding: 18px 20px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, .05);
+}
+
+.stat-card--alert {
+    border-color: #fca5a5;
+    background: #fff1f2;
+}
+
+.stat-num {
+    font-size: 36px;
+    font-weight: 900;
+    color: #07a701;
+    line-height: 1;
+}
+
+.stat-card--alert .stat-num {
+    color: #dc2626;
+}
+
+.stat-label {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+/* Dashboard two-column layout */
+.dash-layout {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 18px;
+    align-items: start;
+}
+
+.dash-main .panel,
+.dash-side .panel {
+    padding: 18px;
+    margin-bottom: 18px;
+}
+
+.panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.panel-head h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+/* Dashboard event row */
+.dash-event-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid #f1f5f9;
+    border-left: 3px solid transparent;
+    padding-left: 10px;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 0 8px 8px 0;
+    transition: background .12s;
+}
+
+.dash-event-row:hover {
+    background: #f8fafc;
+}
+
+.dash-event-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 36px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    padding: 4px 6px;
+    flex-shrink: 0;
+}
+
+.dash-event-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.dash-event-info strong {
+    display: block;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dash-event-info .muted {
+    font-size: 12px;
+}
+
+.dash-event-type {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    text-transform: capitalize;
+}
+
+/* Dashboard notification row */
+.dash-notif-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid #f1f5f9;
+    border-left: 3px solid transparent;
+    padding-left: 10px;
+    border-radius: 0 8px 8px 0;
+}
+
+.dash-notif-row--new {
+    background: #f0fdf4;
+}
+
+/* Bell button */
+.notif-bell-btn {
+    position: relative;
+    font-size: 18px;
+    padding: 10px 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Notifications page
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.notif-panel {
+    padding: 20px;
+}
+
+.notif-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+    font-size: 18px;
+}
+
+.notif-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-top: 1px solid #f1f5f9;
+    border-left: 4px solid transparent;
+    padding-left: 14px;
+    border-radius: 0 10px 10px 0;
+    transition: background .12s;
+}
+
+.notif-row--unread {
+    background: #f8faff;
+}
+
+.notif-row--unread:hover {
+    background: #f0f9ff;
+}
+
+.notif-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.notif-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notif-message {
+    font-size: 14px;
+    color: #0f172a;
+    line-height: 1.4;
+    margin-bottom: 4px;
+}
+
+.notif-meta {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 3px;
+}
+
+.notif-time {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 600;
+}
+
+.notif-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+    .dash-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .dash-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 560px) {
+    .dash-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .dash-stats .stat-card:last-child {
+        grid-column: 1 / -1;
+    }
+}
