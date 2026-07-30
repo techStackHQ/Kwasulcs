@@ -3,7 +3,8 @@
    Matches the design tokens in style.css:
      --bg:#0f172a  --panel:#fff  --primary:#07a701  --muted:#64748b
      --line:#e2e8f0  --text:#0f172a  --danger:#dc2626
-     font: Inter, Segoe UI, Tahoma
+     --shadow-sm/md/lg/xl — the app's shared elevation scale, reused here
+     instead of one-off shadow values.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Notification badge on bell button ───────────────────────────────────── */
@@ -28,33 +29,119 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
     margin-bottom: 16px;
 }
 
-.cal-nav {
+.cal-nav-group {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.cal-month-label {
-    font-size: 20px;
-    font-weight: 800;
-    color: #0f172a;
-    min-width: 160px;
-    text-align: center;
+.cal-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .15s;
 }
 
-.cal-filter-form select {
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 10px 14px;
-    font: inherit;
+.cal-nav-btn:hover {
+    background: var(--soft);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.cal-today-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    padding: 0 18px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    font-weight: 700;
     font-size: 14px;
-    background: #fff;
     cursor: pointer;
-    min-width: 200px;
+    transition: background .15s, border-color .15s;
+}
+
+.cal-today-btn:hover {
+    background: var(--soft);
+    border-color: var(--primary);
+}
+
+.cal-month-label {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+}
+
+.cal-month-label i {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+/* Month / Week / Day toggle */
+.cal-view-toggle {
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    gap: 2px;
+    background: var(--soft);
+    border-radius: 12px;
+    padding: 3px;
+}
+
+.cal-view-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 100%;
+    padding: 0 14px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+}
+
+.cal-view-btn:hover {
+    color: var(--text);
+}
+
+.cal-view-btn.active {
+    background: var(--panel);
+    color: var(--primary-dark);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-add-event-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    margin-left: auto;
+    border-radius: 999px;
+    padding: 0 22px;
 }
 
 /* Legend */
@@ -62,45 +149,71 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 14px;
-    margin-left: auto;
+    gap: 8px 18px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 16px;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .legend-dot {
     display: inline-block;
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
 .legend-label {
     font-size: 12px;
-    color: #64748b;
+    color: var(--muted);
     font-weight: 600;
     text-transform: capitalize;
+}
+
+/* ── Two-column layout: grid + sidebar ───────────────────────────────────── */
+.cal-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 18px;
+    align-items: start;
+}
+
+.cal-main,
+.cal-sidebar {
+    min-width: 0;
 }
 
 /* ── Calendar grid wrapper ────────────────────────────────────────────────── */
 .cal-grid-wrap {
     padding: 0;
     overflow: hidden;
-    margin-bottom: 20px;
+    margin-bottom: 0;
+    border-radius: 18px;
 }
 
 /* Day-of-week header row */
 .cal-dow-row {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    background: linear-gradient(135deg, #07a701, #c08810e0);
+    background: var(--soft);
+    border-bottom: 1px solid var(--line);
 }
 
 .cal-dow {
     text-align: center;
-    padding: 10px 4px;
+    padding: 12px 4px;
     font-size: 12px;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.92);
+    color: var(--muted);
     letter-spacing: .05em;
     text-transform: uppercase;
 }
@@ -109,39 +222,43 @@
 .cal-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    border-left: 1px solid #e2e8f0;
-    border-top: 1px solid #e2e8f0;
 }
 
 /* Individual day cell */
 .cal-day {
     position: relative;
-    min-height: 110px;
-    padding: 6px 6px 28px 6px;
+    min-height: 112px;
+    padding: 8px 8px 30px 8px;
     /* bottom pad makes room for the + button */
-    border-right: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
-    background: #fff;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
     transition: background .12s;
     vertical-align: top;
+    cursor: pointer;
+}
+
+.cal-days .cal-day:nth-child(7n) {
+    border-right: none;
 }
 
 .cal-day:hover {
-    background: #f8fafc;
+    background: var(--soft);
 }
 
 .cal-day--blank {
-    background: #f8fafc;
-    min-height: 110px;
+    background: var(--soft);
+    min-height: 112px;
+    cursor: default;
 }
 
 /* Today highlight */
 .cal-day--today {
-    background: #f0fdf4;
+    background: rgba(7, 167, 1, .07);
 }
 
 .cal-day--today .cal-day-num {
-    background: #07a701;
+    background: var(--primary);
     color: #fff;
     width: 26px;
     height: 26px;
@@ -150,6 +267,13 @@
     align-items: center;
     justify-content: center;
     font-weight: 800;
+    box-shadow: 0 4px 10px rgba(7, 167, 1, .35);
+}
+
+/* Selected-day highlight — distinct from "today", set by clicking a cell or
+   the mini calendar. Purely presentational; no data implications. */
+.cal-day--selected {
+    box-shadow: inset 0 0 0 2px var(--primary);
 }
 
 /* Day number */
@@ -157,13 +281,13 @@
     display: inline-block;
     font-size: 13px;
     font-weight: 700;
-    color: #0f172a;
+    color: var(--text);
     margin-bottom: 4px;
     line-height: 26px;
     padding: 0 3px;
 }
 
-/* Event chip inside a day cell */
+/* Event chip inside a day cell (and reused by the Week view) */
 .cal-event-chip {
     display: flex;
     align-items: center;
@@ -171,20 +295,21 @@
     width: 100%;
     border: none;
     border-left: 3px solid transparent;
-    border-radius: 6px;
-    padding: 3px 5px;
-    margin-bottom: 2px;
+    border-radius: 999px;
+    padding: 4px 8px;
+    margin-bottom: 3px;
     font: inherit;
     font-size: 11px;
     cursor: pointer;
     text-align: left;
     overflow: hidden;
     white-space: nowrap;
-    transition: filter .15s;
+    transition: filter .15s, transform .15s;
 }
 
 .cal-event-chip:hover {
     filter: brightness(.93);
+    transform: translateY(-1px);
 }
 
 .chip-dot {
@@ -195,7 +320,7 @@
 }
 
 .chip-time {
-    color: #475569;
+    color: var(--muted);
     font-weight: 600;
     flex-shrink: 0;
     font-size: 10px;
@@ -205,8 +330,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #0f172a;
-    font-weight: 500;
+    color: var(--text);
+    font-weight: 600;
 }
 
 /* "+N more" chip */
@@ -218,27 +343,31 @@
     font: inherit;
     font-size: 11px;
     font-weight: 700;
-    color: #07a701;
+    color: var(--primary-dark);
     text-align: left;
-    padding: 2px 4px;
+    padding: 3px 8px;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 999px;
 }
 
 .cal-more-chip:hover {
-    background: #dcfce7;
+    background: rgba(7, 167, 1, .1);
 }
 
 /* "+" add-event button — bottom-right of cell, hidden until hover */
 .cal-add-btn {
     position: absolute;
-    bottom: 5px;
-    right: 5px;
+    bottom: 6px;
+    right: 6px;
     width: 22px;
     height: 22px;
     border-radius: 50%;
     border: none;
-    background: #07a701;
+    background-color: var(--primary);
+    background-image: url('images/buttons/primary-btn-bg.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     color: #fff;
     font-size: 16px;
     line-height: 1;
@@ -257,31 +386,293 @@
 
 .cal-add-btn:hover {
     transform: scale(1.15);
-    background: #059669;
+    background-color: var(--primary-dark);
 }
 
-/* ── Upcoming events list ─────────────────────────────────────────────────── */
-.cal-upcoming {
-    padding: 20px;
+/* ── Week view ────────────────────────────────────────────────────────────── */
+.cal-week-body {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    min-height: 320px;
 }
 
-.cal-upcoming h2 {
-    margin: 0 0 16px;
-    font-size: 20px;
+.cal-week-col {
+    padding: 10px 8px;
+    border-right: 1px solid var(--line);
 }
 
-.cal-empty {
-    padding: 24px 0;
+.cal-week-col:last-child {
+    border-right: none;
+}
+
+.cal-week-col--today {
+    background: rgba(7, 167, 1, .06);
+}
+
+.cal-week-daynum {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+}
+
+.cal-week-daynum--today {
+    background: var(--primary);
+    color: #fff;
+}
+
+/* ── Day view ─────────────────────────────────────────────────────────────── */
+.cal-day-view-header {
+    padding: 18px 20px 4px;
+}
+
+.cal-day-view-header h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.cal-day-view-body {
+    padding: 4px 20px 20px;
+}
+
+/* ── Right sidebar cards ──────────────────────────────────────────────────── */
+.cal-side-card {
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.cal-side-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+}
+
+.cal-side-card-head--static {
+    cursor: default;
+    margin-bottom: 8px;
+}
+
+.cal-side-card-head h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.cal-side-chevron {
+    color: var(--muted);
+    transition: transform .2s ease;
+}
+
+.cal-side-card.collapsed .cal-side-chevron {
+    transform: rotate(180deg);
+}
+
+.cal-side-card-body {
+    margin-top: 14px;
+}
+
+.cal-side-card.collapsed .cal-side-card-body {
+    display: none;
+}
+
+.cal-view-all-link {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary-dark);
+}
+
+/* Filters card — a colour key only, not interactive */
+.cal-color-key {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cal-color-key-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: capitalize;
+}
+
+/* Mini calendar */
+.cal-mini-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.cal-mini-cal-head h2 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.cal-mini-nav {
+    display: flex;
+    gap: 2px;
+}
+
+.cal-mini-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    color: var(--muted);
+    font-size: 12px;
+    transition: background .15s;
+}
+
+.cal-mini-nav-btn:hover {
+    background: var(--soft);
+}
+
+.cal-mini-dow-row,
+.cal-mini-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
     text-align: center;
 }
 
-/* upcoming-item is shared with course.php strip — we add calendar-specific tweaks */
+.cal-mini-dow-row span {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--muted);
+    padding-bottom: 6px;
+}
+
+.cal-mini-day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 1;
+    border: none;
+    background: none;
+    border-radius: 50%;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.cal-mini-day:hover {
+    background: var(--soft);
+}
+
+.cal-mini-day--muted {
+    color: var(--muted);
+    opacity: .5;
+}
+
+.cal-mini-day--today {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 800;
+}
+
+.cal-mini-day--selected:not(.cal-mini-day--today) {
+    box-shadow: inset 0 0 0 2px var(--primary);
+    font-weight: 700;
+}
+
+/* Upcoming Events sidebar card — the ONLY upcoming-events component on this
+   page now (no separate full-list section). Reuses .upcoming-date/.udate-*
+   and .ev-badge from the shared styles below rather than duplicating them. */
+.cal-upcoming-card-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 10px;
+    border-radius: 12px;
+    margin-bottom: 2px;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    transition: background .12s;
+}
+
+.cal-upcoming-card-row:hover {
+    background: var(--soft);
+}
+
+.cal-upcoming-card-row .upcoming-date {
+    flex-shrink: 0;
+}
+
+.cal-upcoming-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cal-upcoming-card-info>strong {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-upcoming-card-meta {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.cal-upcoming-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.cal-repeat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--soft);
+    color: var(--muted);
+}
+
+.cal-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px 12px;
+    gap: 8px;
+}
+
+/* upcoming-item is used by the Day-view modal's JS-generated rows (dayEventsHtml) */
 .upcoming-item {
     display: flex;
     align-items: flex-start;
     gap: 14px;
     padding: 12px 0;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
     border-left: 4px solid transparent;
     padding-left: 12px;
     transition: background .12s;
@@ -293,7 +684,7 @@
 }
 
 .upcoming-item:hover {
-    background: #f8fafc;
+    background: var(--soft);
 }
 
 .upcoming-date {
@@ -301,7 +692,7 @@
     flex-direction: column;
     align-items: center;
     min-width: 40px;
-    background: #f1f5f9;
+    background: var(--soft);
     border-radius: 10px;
     padding: 6px 8px;
     flex-shrink: 0;
@@ -310,14 +701,14 @@
 .udate-day {
     font-size: 22px;
     font-weight: 900;
-    color: #0f172a;
+    color: var(--text);
     line-height: 1;
 }
 
 .udate-mon {
     font-size: 11px;
     font-weight: 700;
-    color: #64748b;
+    color: var(--muted);
     text-transform: uppercase;
     letter-spacing: .04em;
 }
@@ -330,7 +721,7 @@
 .upcoming-info strong {
     display: block;
     font-size: 15px;
-    color: #0f172a;
+    color: var(--text);
     margin-bottom: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -339,7 +730,7 @@
 
 .upcoming-desc {
     font-size: 12px;
-    color: #64748b;
+    color: var(--muted);
     margin-top: 3px;
     white-space: nowrap;
     overflow: hidden;
@@ -382,9 +773,9 @@
 }
 
 .modal-box {
-    background: #fff;
+    background: var(--panel);
     border-radius: 22px;
-    box-shadow: 0 30px 80px rgba(15, 23, 42, .22);
+    box-shadow: var(--shadow-xl);
     width: min(520px, 100%);
     max-height: 92vh;
     display: flex;
@@ -413,8 +804,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 18px 22px 14px;
-    border-bottom: 1px solid #e2e8f0;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--line);
     flex-shrink: 0;
 }
 
@@ -424,7 +815,7 @@
 }
 
 .modal-close {
-    background: #f1f5f9;
+    background: var(--soft);
     border: none;
     border-radius: 50%;
     width: 32px;
@@ -434,7 +825,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #64748b;
+    color: var(--muted);
     transition: background .15s, color .15s;
     flex-shrink: 0;
 }
@@ -445,14 +836,14 @@
 }
 
 .modal-body {
-    padding: 18px 22px;
+    padding: 20px 24px;
     overflow-y: auto;
     flex: 1;
 }
 
 .modal-footer {
-    padding: 14px 22px;
-    border-top: 1px solid #e2e8f0;
+    padding: 16px 24px;
+    border-top: 1px solid var(--line);
     display: flex;
     gap: 10px;
     align-items: center;
@@ -477,9 +868,9 @@
     align-items: flex-start;
     gap: 10px;
     padding: 8px 0;
-    border-top: 1px solid #f1f5f9;
+    border-top: 1px solid var(--soft);
     font-size: 14px;
-    color: #0f172a;
+    color: var(--text);
     line-height: 1.5;
 }
 
@@ -505,7 +896,7 @@
 /* Recurrence row */
 .recurrence-row {
     padding: 10px 0 2px;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 /* Notification row */
@@ -515,7 +906,7 @@
     align-items: center;
     gap: 10px 16px;
     padding: 10px 0 2px;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line);
 }
 
 .notif-label {
@@ -524,31 +915,44 @@
     color: #475569;
 }
 
-.checkbox-label {
-    display: flex !important;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-    font-size: 14px;
-    cursor: pointer;
-}
-
-.checkbox-label input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: #07a701;
-}
-
 /* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    .cal-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .cal-sidebar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+    }
+
+    .cal-side-card {
+        margin-bottom: 0;
+    }
+}
+
 @media (max-width: 860px) {
     .cal-controls {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
+    }
+
+    .cal-nav-group {
+        justify-content: center;
+    }
+
+    .cal-view-toggle {
+        justify-content: center;
+    }
+
+    .cal-add-event-btn {
+        margin-left: 0;
+        justify-content: center;
     }
 
     .cal-legend {
-        margin-left: 0;
+        justify-content: center;
     }
 
     .cal-day {
@@ -569,6 +973,10 @@
         flex-direction: column;
         align-items: flex-end;
     }
+
+    .cal-sidebar {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 560px) {
@@ -587,7 +995,7 @@
 
     .cal-event-chip {
         font-size: 10px;
-        padding: 2px 3px;
+        padding: 2px 6px;
     }
 
     .chip-title {
@@ -597,7 +1005,15 @@
 
     .cal-month-label {
         font-size: 16px;
-        min-width: 120px;
+    }
+
+    .cal-week-body {
+        grid-template-columns: 1fr;
+    }
+
+    .cal-week-col {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
     }
 
     .modal-box {
@@ -634,7 +1050,7 @@
 .stat-num {
     font-size: 36px;
     font-weight: 900;
-    color: #07a701;
+    color: var(--primary-dark);
     line-height: 1;
 }
 
@@ -649,18 +1065,39 @@
     font-weight: 600;
 }
 
-/* Dashboard two-column layout */
+/* Dashboard layout — courses first (full width), events/notifications below */
 .dash-layout {
     display: grid;
-    grid-template-columns: 1.6fr 1fr;
+    grid-template-columns: 1fr;
     gap: 18px;
     align-items: start;
+}
+
+/* Grid items default to min-width:auto, which refuses to shrink below the
+   content's intrinsic size — since the slider's cards don't shrink (flex: 0 0
+   240px), that width would otherwise bubble up and stretch the whole page
+   instead of staying contained by .course-slider's own overflow-x:auto. */
+.dash-main,
+.dash-side {
+    min-width: 0;
 }
 
 .dash-main .panel,
 .dash-side .panel {
     padding: 18px;
     margin-bottom: 18px;
+}
+
+/* Upcoming Events / Notifications sit side by side as two equal cards,
+   not stacked — .dash-side's panels no longer need the stacking margin. */
+.dash-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.dash-side .panel {
+    margin-bottom: 0;
 }
 
 .panel-head {
@@ -674,6 +1111,48 @@
 .panel-head h2 {
     margin: 0;
     font-size: 18px;
+}
+
+.panel-head--dash {
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.panel-head-icon {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+}
+
+.panel-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(7, 167, 1, .12);
+    color: var(--primary-dark);
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.panel-subtitle {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+}
+
+.pill-cta {
+    border-radius: 999px !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.pill-cta i {
+    font-size: 11px;
 }
 
 /* Dashboard event row */
@@ -748,12 +1227,17 @@
     background: #f0fdf4;
 }
 
-/* Bell button */
-.notif-bell-btn {
-    position: relative;
-    font-size: 18px;
-    padding: 10px 14px;
+.dash-notif-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 15px;
+    flex-shrink: 0;
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Notifications page
@@ -840,6 +1324,18 @@
         grid-template-columns: 1fr;
     }
 
+    .dash-side {
+        grid-template-columns: 1fr;
+    }
+
+    .dash-side .panel {
+        margin-bottom: 18px;
+    }
+
+    .dash-side .panel:last-child {
+        margin-bottom: 0;
+    }
+
     .dash-stats {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -852,5 +1348,59 @@
 
     .dash-stats .stat-card:last-child {
         grid-column: 1 / -1;
+    }
+
+    .panel-head--dash {
+        flex-wrap: wrap;
+    }
+
+    .panel-head--dash .pill-cta {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ── Calendar controls: dedicated mobile reflow, not a shrunk desktop row ───
+   Row 1: Prev / Next / Today. Row 2: current month label. Row 3: Month/Week/
+   Day tabs. Row 4: Add Event. Placed after every other media query in this
+   file (including the two 860px blocks above) so it wins the cascade at the
+   same ≤768px viewports rather than fighting their .cal-nav-group /
+   .cal-view-toggle / .cal-add-event-btn rules on source order. */
+@media (max-width: 768px) {
+    .cal-controls {
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .cal-nav-group {
+        flex-wrap: wrap;
+        justify-content: center;
+        row-gap: 10px;
+    }
+
+    /* Forced onto its own line via flex-basis:100% (same spacer trick used
+       elsewhere in this app) rather than a markup split, so the existing
+       JS/PHP that reads .cal-nav-group's children is untouched. */
+    .cal-month-label {
+        flex-basis: 100%;
+        justify-content: center;
+        margin-left: 0;
+        font-size: 18px;
+    }
+
+    .cal-view-toggle {
+        width: 100%;
+        height: 50px;
+        justify-content: center;
+    }
+
+    .cal-view-btn {
+        flex: 1;
+        padding: 0 6px;
+        font-size: 12px;
+    }
+
+    .cal-add-event-btn {
+        width: 100%;
     }
 }

@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_login();
+ensure_topic_overview_column();
+ensure_announcements_table();
 
 $user = current_user();
 if (!in_array($user['role'], ['admin', 'lecturer'], true)) {
@@ -10,6 +12,7 @@ if (!in_array($user['role'], ['admin', 'lecturer'], true)) {
 
 $messages = [];
 $errors   = [];
+$__coursePalette = course_color_palette();
 
 function can_see_course(array $course, array $user): bool
 {
@@ -34,6 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $code       = trim((string)($_POST['code'] ?? ''));
             $semester   = (string)($_POST['semester'] ?? '');
             $lecturerId = (int)($_POST['lecturer_id'] ?? 0);
+            $palette    = course_color_palette();
+            $color      = (string)($_POST['color'] ?? '');
+            if (!in_array($color, $palette, true)) {
+                $color = reset($palette);
+            }
 
             if ($title === '' || $code === '' || !in_array($semester, ['rain', 'harmattan'], true) || $lecturerId <= 0) {
                 throw new RuntimeException('Fill all course fields correctly.');
@@ -47,13 +55,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$courseId]);
                 $existing = $stmt->fetch();
                 if (!$existing || !can_see_course($existing, $user)) throw new RuntimeException('Course not found.');
-                db()->prepare('UPDATE courses SET title=?,code=?,semester=?,lecturer_id=? WHERE id=?')
-                    ->execute([$title, $code, $semester, $lecturerId, $courseId]);
+                db()->prepare('UPDATE courses SET title=?,code=?,semester=?,lecturer_id=?,color=? WHERE id=?')
+                    ->execute([$title, $code, $semester, $lecturerId, $color, $courseId]);
                 $messages[] = 'Course updated.';
                 if (!$activeCourseId) $activeCourseId = $courseId;
             } else {
-                db()->prepare('INSERT INTO courses (title,code,semester,lecturer_id) VALUES (?,?,?,?)')
-                    ->execute([$title, $code, $semester, $lecturerId]);
+                db()->prepare('INSERT INTO courses (title,code,semester,lecturer_id,color) VALUES (?,?,?,?,?)')
+                    ->execute([$title, $code, $semester, $lecturerId, $color]);
                 $newId = (int)db()->lastInsertId();
                 $messages[] = 'Course created.';
                 $activeCourseId = $newId;
@@ -75,13 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $courseId   = (int)($_POST['active_course_id'] ?? 0);
             $weekNumber = (int)($_POST['week_number'] ?? 0);
             $title      = trim((string)($_POST['topic_title'] ?? ''));
+            $overview   = trim((string)($_POST['topic_overview'] ?? ''));
             $stmt = db()->prepare('SELECT * FROM courses WHERE id = ? LIMIT 1');
             $stmt->execute([$courseId]);
             $course = $stmt->fetch();
             if (!$course || !can_see_course($course, $user)) throw new RuntimeException('Course not found.');
             if ($weekNumber <= 0 || $title === '') throw new RuntimeException('Provide a week number and topic title.');
-            db()->prepare('INSERT INTO topics (course_id,week_number,title) VALUES (?,?,?)')
-                ->execute([$courseId, $weekNumber, $title]);
+            db()->prepare('INSERT INTO topics (course_id,week_number,title,overview) VALUES (?,?,?,?)')
+                ->execute([$courseId, $weekNumber, $title, $overview !== '' ? $overview : null]);
             $messages[] = 'Topic added.';
         }
 
@@ -306,16 +315,12 @@ function section_type_label(string $t): string
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage LMS — <?php echo $activeCourse ? h($activeCourse['code']) : 'Content Management'; ?></title>
-    <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="stylesheet" href="assets/admin.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = $activeCourse ? h($activeCourse['code']) : 'Content Management'; $extraCss = ['assets/admin.css']; include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
 
     <header class="topbar">
         <div>
@@ -328,13 +333,10 @@ function section_type_label(string $t): string
             <?php endif; ?>
         </div>
         <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
             <?php if ($activeCourse): ?>
-                <a class="btn secondary" href="admin.php">← All Courses</a>
+                <a class="btn glass" href="admin.php">← All Courses</a>
             <?php endif; ?>
-            <a class="btn secondary" href="calendar.php">📅 Calendar</a>
-            <a class="btn secondary" href="dashboard.php">Dashboard</a>
-            <a class="btn danger" href="logout.php">Logout</a>
+            <a class="btn glass btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
         </div>
     </header>
 
@@ -379,6 +381,20 @@ function section_type_label(string $t): string
                             <?php endforeach; ?>
                         </select>
                     </label>
+                    <label>Color
+                        <div class="color-swatch-picker">
+                            <?php
+                            $selectedColor = $editCourse['color'] ?? reset($__coursePalette);
+                            foreach ($__coursePalette as $label => $hex):
+                            ?>
+                                <label class="color-swatch-wrap" title="<?php echo h($label); ?>">
+                                    <input type="radio" name="color" value="<?php echo h($hex); ?>" class="color-swatch-input"
+                                        <?php echo $selectedColor === $hex ? 'checked' : ''; ?>>
+                                    <span class="color-swatch" style="background:<?php echo h($hex); ?>;"></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </label>
                     <button class="btn primary" type="submit"><?php echo $editCourse ? 'Update Course' : 'Create Course'; ?></button>
                 </form>
             </section>
@@ -412,7 +428,7 @@ function section_type_label(string $t): string
                             </div>
                             <a class="btn primary"
                                 href="admin.php?manage=<?php echo (int)$c['id']; ?>">
-                                📂 Manage Content →
+                                <i class="bi bi-folder2-open icon"></i> Manage Content →
                             </a>
                         </div>
                     <?php endforeach; ?>
@@ -434,16 +450,16 @@ function section_type_label(string $t): string
                     <span class="muted"><?php echo strtoupper(h($activeCourse['semester'])); ?></span>
                 </div>
                 <a class="btn tiny secondary" href="course.php?id=<?php echo $activeCourseId; ?>" target="_blank">
-                    👁 View Course →
+                    <i class="bi bi-eye-fill icon"></i> View Course →
                 </a>
             </div>
 
             <!-- Tab navigation -->
             <div class="admin-tabs">
                 <a class="admin-tab <?php echo ($_GET['tab'] ?? 'weeks') === 'weeks' ? 'active' : ''; ?>"
-                    href="admin.php?manage=<?php echo $activeCourseId; ?>&tab=weeks">📅 Weekly Topics</a>
+                    href="admin.php?manage=<?php echo $activeCourseId; ?>&tab=weeks"><i class="bi bi-calendar3 icon"></i> Weekly Topics</a>
                 <a class="admin-tab <?php echo ($_GET['tab'] ?? '') === 'sections' ? 'active' : ''; ?>"
-                    href="admin.php?manage=<?php echo $activeCourseId; ?>&tab=sections">📌 Tutorial / Exam Sections</a>
+                    href="admin.php?manage=<?php echo $activeCourseId; ?>&tab=sections"><i class="bi bi-pin-angle-fill icon"></i> Tutorial / Exam Sections</a>
             </div>
 
             <?php $tab = $_GET['tab'] ?? 'weeks'; ?>
@@ -464,6 +480,9 @@ function section_type_label(string $t): string
                             </label>
                             <label>Topic Title
                                 <input type="text" name="topic_title" required placeholder="e.g. Introduction to Networking">
+                            </label>
+                            <label>Week Overview <span class="muted" style="font-weight:400;">(optional)</span>
+                                <textarea name="topic_overview" rows="2" placeholder="A short 1-2 sentence summary students see before expanding this week…"></textarea>
                             </label>
                             <button class="btn primary" type="submit">Add Topic</button>
                         </form>

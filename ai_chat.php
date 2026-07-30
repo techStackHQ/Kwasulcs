@@ -1,4 +1,13 @@
 <?php
+// Temporary error catching — remove after debugging
+ini_set('display_errors', 0);
+register_shutdown_function(function() {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['error' => 'PHP Fatal: ' . $err['message'] . ' in ' . basename($err['file']) . ' line ' . $err['line']]);
+    }
+});
 
 /**
  * ai_chat.php — Course Q&A AI backend
@@ -48,20 +57,41 @@ try {
 } catch (\Throwable $e) { /* tables may already exist */
 }
 
+// One-time, idempotent migration: course_id must be nullable to support a
+// general (non-course) AI assistant session pinned at the top of chat.php.
+try {
+    db()->exec("ALTER TABLE ai_chat_sessions MODIFY course_id INT NULL");
+} catch (\Throwable $e) { /* already nullable, or column locked by another request */
+}
+
 // ── Action: get_sessions ──────────────────────────────────────────────────────
 if ($action === 'get_sessions') {
     $courseId = (int)($body['course_id'] ?? 0);
-    $stmt = db()->prepare("
-        SELECT s.id, s.title, s.created_at, s.updated_at,
-               COUNT(m.id) AS message_count
-        FROM ai_chat_sessions s
-        LEFT JOIN ai_chat_messages m ON m.session_id = s.id
-        WHERE s.user_id = ? AND s.course_id = ?
-        GROUP BY s.id
-        ORDER BY COALESCE(s.updated_at, s.created_at) DESC
-        LIMIT 20
-    ");
-    $stmt->execute([$user['id'], $courseId]);
+    if ($courseId > 0) {
+        $stmt = db()->prepare("
+            SELECT s.id, s.title, s.created_at, s.updated_at,
+                   COUNT(m.id) AS message_count
+            FROM ai_chat_sessions s
+            LEFT JOIN ai_chat_messages m ON m.session_id = s.id
+            WHERE s.user_id = ? AND s.course_id = ?
+            GROUP BY s.id
+            ORDER BY COALESCE(s.updated_at, s.created_at) DESC
+            LIMIT 20
+        ");
+        $stmt->execute([$user['id'], $courseId]);
+    } else {
+        $stmt = db()->prepare("
+            SELECT s.id, s.title, s.created_at, s.updated_at,
+                   COUNT(m.id) AS message_count
+            FROM ai_chat_sessions s
+            LEFT JOIN ai_chat_messages m ON m.session_id = s.id
+            WHERE s.user_id = ? AND s.course_id IS NULL
+            GROUP BY s.id
+            ORDER BY COALESCE(s.updated_at, s.created_at) DESC
+            LIMIT 20
+        ");
+        $stmt->execute([$user['id']]);
+    }
     echo json_encode(['sessions' => $stmt->fetchAll()]);
     exit();
 }
@@ -70,7 +100,7 @@ if ($action === 'get_sessions') {
 if ($action === 'new_session') {
     $courseId = (int)($body['course_id'] ?? 0);
     $stmt = db()->prepare("INSERT INTO ai_chat_sessions (user_id, course_id, title) VALUES (?,?,'New Chat')");
-    $stmt->execute([$user['id'], $courseId]);
+    $stmt->execute([$user['id'], $courseId > 0 ? $courseId : null]);
     echo json_encode(['session_id' => (int)db()->lastInsertId()]);
     exit();
 }
@@ -138,16 +168,16 @@ $courseId    = (int)($body['course_id'] ?? 0);
 $sessionId   = isset($body['session_id']) && $body['session_id'] ? (int)$body['session_id'] : null;
 $attachments = $body['attachments'] ?? []; // [{name, type, b64, isImage}]
 
-if ($message === '' || $courseId <= 0) {
+if ($message === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing message or course_id']);
+    echo json_encode(['error' => 'Missing message']);
     exit();
 }
 
 // Create session if none provided
 if (!$sessionId) {
     $stmt = db()->prepare("INSERT INTO ai_chat_sessions (user_id, course_id, title) VALUES (?,?,'New Chat')");
-    $stmt->execute([$user['id'], $courseId]);
+    $stmt->execute([$user['id'], $courseId > 0 ? $courseId : null]);
     $sessionId = (int)db()->lastInsertId();
 }
 
@@ -175,14 +205,18 @@ if (empty($history)) {
     db()->prepare("UPDATE ai_chat_sessions SET title = ? WHERE id = ?")->execute([$title, $sessionId]);
 }
 
-// ── Load course context ───────────────────────────────────────────────────────
-$courseStmt = db()->prepare('SELECT c.*, u.full_name AS lecturer_name FROM courses c JOIN users u ON u.id = c.lecturer_id WHERE c.id = ?');
-$courseStmt->execute([$courseId]);
-$course = $courseStmt->fetch();
-if (!$course) {
-    http_response_code(404);
-    echo json_encode(['error' => 'Course not found']);
-    exit();
+// ── Load course context (skipped entirely for the general assistant, where
+//    $courseId is 0 — no course to scope answers to) ─────────────────────────
+$course = null;
+if ($courseId > 0) {
+    $courseStmt = db()->prepare('SELECT c.*, u.full_name AS lecturer_name FROM courses c JOIN users u ON u.id = c.lecturer_id WHERE c.id = ?');
+    $courseStmt->execute([$courseId]);
+    $course = $courseStmt->fetch();
+    if (!$course) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Course not found']);
+        exit();
+    }
 }
 
 // ── Document text extraction helpers ─────────────────────────────────────────
@@ -230,24 +264,127 @@ foreach ($docKeywords as $kw) {
     }
 }
 
-// ── Build course context ──────────────────────────────────────────────────────
-$context  = "COURSE: {$course['code']} — {$course['title']}\n";
-$context .= "Lecturer: {$course['lecturer_name']}\n";
-$context .= "Semester: " . ucfirst($course['semester']) . "\n\n";
+// ── Topic relevance pre-filter (retrieval step) ───────────────────────────────
+// Rebuilding the ENTIRE course's document text on every single message — even
+// a "hi" — was the single biggest source of wasted tokens. Instead: figure out
+// which topic(s) the question is actually about using cheap, free keyword
+// matching in PHP first, and only pay for full document extraction / PDF
+// loading / transcript fetching on those matched topics. Unmatched topics
+// still get listed by title so the AI knows they exist, just without their
+// full content — near-zero extra cost.
+$STOPWORDS = ['a','an','and','are','as','at','be','by','for','from','has','he','in','is','it',
+    'its','of','on','that','the','to','was','were','will','with','this','what','when','where',
+    'who','how','why','does','do','did','can','could','would','should','please','i','you','your',
+    'my','me','we','our','us','they','them','their','about','into','than','then','there','here',
+    'which','or','but','not','no','yes','ok','okay','hello','hi','hey','thanks','thank','course',
+    'week','topic'];
+
+function extract_keywords(string $text): array
+{
+    global $STOPWORDS;
+    $text  = strtolower(preg_replace('/[^a-z0-9\s]/i', ' ', $text));
+    $words = array_filter(explode(' ', $text), fn($w) => strlen($w) > 2 && !in_array($w, $STOPWORDS));
+    return array_values(array_unique($words));
+}
+
+function score_relevance(array $questionKeywords, string $candidateText): int
+{
+    if (empty($questionKeywords)) return 0;
+    $candidateLower = strtolower($candidateText);
+    $score = 0;
+    foreach ($questionKeywords as $kw) {
+        if (str_contains($candidateLower, $kw)) $score++;
+    }
+    return $score;
+}
+
+// Broad/course-wide questions should see every topic's title even without a
+// keyword match (e.g. "what topics does this course cover?").
+$broadKeywords = ['course cover', 'all topics', 'whole course', 'entire course', 'every week',
+    'course structure', 'course overview', 'what topics', 'list the topics', 'course outline'];
+$isBroadQuestion = false;
+foreach ($broadKeywords as $kw) {
+    if (str_contains($msgLower, $kw)) { $isBroadQuestion = true; break; }
+}
+
+$questionKeywords = extract_keywords($message);
+
+// ── Build course context (empty for the general assistant) ──────────────────
+$context = '';
+if ($course) {
+    $context .= "COURSE: {$course['code']} — {$course['title']}\n";
+    $context .= "Lecturer: {$course['lecturer_name']}\n";
+    $context .= "Semester: " . ucfirst($course['semester']) . "\n\n";
+}
 
 $pdfDocuments = [];
 
-$topicsStmt = db()->prepare('SELECT * FROM topics WHERE course_id = ? ORDER BY week_number ASC');
-$topicsStmt->execute([$courseId]);
-$topics = $topicsStmt->fetchAll();
+$topics = [];
+if ($course) {
+    $topicsStmt = db()->prepare('SELECT * FROM topics WHERE course_id = ? ORDER BY week_number ASC');
+    $topicsStmt->execute([$courseId]);
+    $topics = $topicsStmt->fetchAll();
+}
+
+// ── Pass 1: lightweight metadata only (titles) — cheap, always loaded ────────
+// Also fetch each topic's document/video titles here (titles only, no content)
+// so we can score relevance without paying for extraction yet.
+$topicMeta = [];
+foreach ($topics as $topic) {
+    $docs = db()->prepare('SELECT * FROM documents WHERE topic_id = ?');
+    $docs->execute([$topic['id']]);
+    $docRows = $docs->fetchAll();
+
+    $vids = db()->prepare('SELECT title, original_url FROM videos WHERE topic_id = ?');
+    $vids->execute([$topic['id']]);
+    $vidRows = $vids->fetchAll();
+
+    $titleBlob = $topic['title'] . ' ' . implode(' ', array_column($docRows, 'title')) . ' ' . implode(' ', array_column($vidRows, 'title'));
+    $score = score_relevance($questionKeywords, $titleBlob);
+
+    $topicMeta[] = [
+        'topic' => $topic, 'docs' => $docRows, 'vids' => $vidRows, 'score' => $score,
+    ];
+}
+
+// ── Decide which topics get FULL extraction ───────────────────────────────────
+// - Any topic with a keyword match (score > 0) is relevant -> full extraction.
+// - If nothing matched at all, fall back to the top 2 topics by week order
+//   recency isn't meaningful here, so just avoid extracting everything blind;
+//   broad questions get metadata-only for all topics instead (handled below).
+$maxScore = max(array_column($topicMeta, 'score') ?: [0]);
+$relevantTopicIds = [];
+if ($maxScore > 0) {
+    foreach ($topicMeta as $tm) {
+        if ($tm['score'] > 0) $relevantTopicIds[] = $tm['topic']['id'];
+    }
+} elseif (!$isBroadQuestion && count($topicMeta) > 0) {
+    // No keyword match and not an explicit broad question — likely a short/
+    // generic message ("hi", "thanks"). Don't extract anything heavy; the AI
+    // still sees every topic's title via the metadata line below.
+    $relevantTopicIds = [];
+}
 
 if ($topics) {
-    $context .= "WEEKLY TOPICS AND CONTENT:\n";
-    foreach ($topics as $topic) {
+    $context .= "WEEKLY TOPICS:\n";
+    foreach ($topicMeta as $tm) {
+        $topic   = $tm['topic'];
+        $isFull  = in_array($topic['id'], $relevantTopicIds, true);
         $context .= "\nWeek {$topic['week_number']}: {$topic['title']}\n";
-        $docs = db()->prepare('SELECT * FROM documents WHERE topic_id = ?');
-        $docs->execute([$topic['id']]);
-        foreach ($docs->fetchAll() as $doc) {
+
+        if (!$isFull) {
+            // Metadata-only: just list what exists, no extraction cost at all.
+            foreach ($tm['docs'] as $doc) {
+                $context .= "  [Document available: {$doc['title']}]\n";
+            }
+            foreach ($tm['vids'] as $vid) {
+                $context .= "  [Video available: {$vid['title']}]\n";
+            }
+            continue;
+        }
+
+        // Relevant topic — pay for full extraction.
+        foreach ($tm['docs'] as $doc) {
             $absPath = PRIVATE_UPLOAD_ROOT . '/' . ltrim($doc['file_path'], '/');
             $ext     = strtolower($doc['file_type'] ?? pathinfo($absPath, PATHINFO_EXTENSION));
             if (in_array($ext, ['docx', 'doc'])) {
@@ -258,8 +395,6 @@ if ($topics) {
             } elseif ($ext === 'txt' && file_exists($absPath)) {
                 $context .= "  [Document: {$doc['title']}]\n" . substr(file_get_contents($absPath), 0, 3000) . "\n";
             } elseif ($ext === 'pdf' && file_exists($absPath)) {
-                // Only load PDF content when question is about documents/reading
-                // Avoids 2MB+ payloads on every simple question
                 if ($loadPdfs) {
                     $pdfDocuments[] = [
                         'type'   => 'document',
@@ -274,9 +409,7 @@ if ($topics) {
                 $context .= "  [Document: {$doc['title']} ({$ext})]\n";
             }
         }
-        $vids = db()->prepare('SELECT title, original_url FROM videos WHERE topic_id = ?');
-        $vids->execute([$topic['id']]);
-        foreach ($vids->fetchAll() as $vid) {
+        foreach ($tm['vids'] as $vid) {
             $context .= "  [Video: {$vid['title']}]\n";
             if (!empty($vid['original_url'])) {
                 $videoId = youtube_id($vid['original_url']);
@@ -293,9 +426,12 @@ if ($topics) {
     }
 }
 
-$sectionsStmt = db()->prepare('SELECT cs.*, sr.title AS res_title, sr.resource_type, sr.file_path, sr.file_type FROM course_sections cs LEFT JOIN section_resources sr ON sr.section_id = cs.id WHERE cs.course_id = ? ORDER BY cs.section_type, cs.id');
-$sectionsStmt->execute([$courseId]);
-$sections = $sectionsStmt->fetchAll();
+$sections = [];
+if ($course) {
+    $sectionsStmt = db()->prepare('SELECT cs.*, sr.title AS res_title, sr.resource_type, sr.file_path, sr.file_type FROM course_sections cs LEFT JOIN section_resources sr ON sr.section_id = cs.id WHERE cs.course_id = ? ORDER BY cs.section_type, cs.id');
+    $sectionsStmt->execute([$courseId]);
+    $sections = $sectionsStmt->fetchAll();
+}
 if ($sections) {
     $context .= "\nTUTORIAL AND EXAM SECTIONS:\n";
     $seen = [];
@@ -326,7 +462,9 @@ if ($sections) {
 }
 
 // ── Build messages for API (include conversation history for multi-turn) ──────
-$systemPrompt = "You are an AI study assistant for the KWASU Lecture Capture System (LCS) at Kwara State University.\n\nYou are helping students with the following course:\n\n{$context}\n\nYour role:\n- Answer questions about the actual course content — you have access to the real documents above\n- If the student attaches an image or document, analyse it carefully and answer in relation to the course\n- Explain concepts, summarize topics, and help students understand the material\n- Reference specific weeks or documents when relevant\n- Be encouraging, clear, and appropriately detailed\n- Stay focused on this course; politely decline unrelated questions\n\nStudent: {$user['full_name']} ({$user['role']})";
+$systemPrompt = $course
+    ? "You are an AI study assistant for the KWASU Lecture Capture System (LCS) at Kwara State University.\n\nYou are helping students with the following course:\n\n{$context}\n\nYour role:\n- Answer questions about the actual course content — you have access to the real documents above\n- If the student attaches an image or document, analyse it carefully and answer in relation to the course\n- Explain concepts, summarize topics, and help students understand the material\n- Reference specific weeks or documents when relevant\n- Be encouraging, clear, and appropriately detailed\n- Stay focused on this course; politely decline unrelated questions\n\nStudent: {$user['full_name']} ({$user['role']})"
+    : "You are a general AI study assistant for KWASU Lecture Capture System (LCS) students at Kwara State University.\n\nYou are not scoped to any single course — help with general study questions, explain concepts, and if the student attaches an image or document, analyse it and answer helpfully.\nBe encouraging, clear, and appropriately detailed.\n\nStudent: {$user['full_name']} ({$user['role']})";
 
 // Build messages array including history
 $apiMessages = [];
@@ -408,7 +546,7 @@ curl_setopt_array($ch, [
         'anthropic-version: 2023-06-01',
         'anthropic-beta: pdfs-2024-09-25',
     ],
-    CURLOPT_TIMEOUT => 90,
+    CURLOPT_TIMEOUT => 60,
 ]);
 
 $response  = curl_exec($ch);

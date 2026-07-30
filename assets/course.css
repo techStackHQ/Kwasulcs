@@ -1,0 +1,772 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KWASU LCS — course.css
+   New components for the redesigned Course Details page (course.php):
+   progress card, accordion Weekly Topics, tabbed Announcements & Tutorials,
+   compact video/document lists, and the three in-app preview modals.
+   Header/hero/sidebar and the existing quiz modal + AI assistant widget are
+   untouched — this file only adds new classes, nothing here overrides them.
+   Reuses the app's shared tokens (--panel/--line/--muted/--text/--soft/
+   --primary/--primary-dark/--shadow-*) so light/dark mode keep working.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Course Progress: compact stats card (not a long progress bar) ───────── */
+.course-progress-card {
+    display: flex;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--shadow-sm);
+    padding: 14px 20px;
+    margin-top: 18px;
+    gap: 18px;
+}
+
+.course-stat {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 2px;
+}
+
+.course-stat-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--line);
+    flex-shrink: 0;
+}
+
+.course-stat-value {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.course-stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+/* The Progress % tile keeps a small ring accent so it still reads as the
+   headline stat, without reintroducing a full-width bar. */
+.course-stat-value--pct {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 12.5px;
+    color: var(--primary-dark);
+    background:
+        radial-gradient(closest-side, var(--panel) 72%, transparent 73% 100%),
+        conic-gradient(var(--primary) calc(var(--pct) * 1%), var(--soft) 0);
+}
+
+/* ── Two-column layout ────────────────────────────────────────────────────── */
+.course-detail-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 18px;
+    align-items: start;
+    margin-top: 18px;
+}
+
+.weekly-topics-panel,
+.announcements-panel {
+    min-width: 0;
+}
+
+/* ── Friendly empty states ────────────────────────────────────────────────── */
+.course-empty-state {
+    text-align: center;
+    padding: 36px 16px;
+    color: var(--muted);
+}
+
+.course-empty-state i {
+    font-size: 34px;
+    display: block;
+    margin-bottom: 10px;
+    opacity: .6;
+}
+
+.course-empty-state p {
+    margin: 0;
+    font-weight: 700;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.course-empty-state .muted {
+    display: block;
+    margin-top: 4px;
+    font-size: 12.5px;
+}
+
+/* ── Accordion ─────────────────────────────────────────────────────────────── */
+.accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.accordion-item {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: var(--shadow-sm);
+}
+
+.accordion-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: var(--text);
+}
+
+.accordion-week-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--soft);
+    color: var(--muted);
+    font-weight: 800;
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: background .2s ease, color .2s ease;
+}
+
+.accordion-item.open .accordion-week-num {
+    background: var(--primary);
+    color: #fff;
+}
+
+.accordion-title-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.accordion-eyebrow {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: var(--muted);
+}
+
+.accordion-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.accordion-bookmark-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #f59e0b;
+    font-size: 16px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.accordion-bookmark-btn:hover {
+    background: var(--soft);
+}
+
+.accordion-chevron {
+    flex-shrink: 0;
+    color: var(--muted);
+    transition: transform .25s ease;
+}
+
+.accordion-item.open .accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.accordion-panel {
+    padding: 0 18px 18px;
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+}
+
+.accordion-overview {
+    margin: 0 0 14px;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+/* ── Week content columns ─────────────────────────────────────────────────── */
+.week-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 20px;
+}
+
+.week-columns:has(.week-quiz-col) {
+    grid-template-columns: 1fr 1fr .8fr;
+}
+
+.week-col-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 13.5px;
+    margin-bottom: 10px;
+}
+
+.week-col-head i {
+    color: var(--primary-dark);
+}
+
+.week-col-empty {
+    font-size: 13px;
+    padding: 6px 0;
+}
+
+/* ── Compact video list rows ──────────────────────────────────────────────── */
+.video-list-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    background: var(--soft);
+    border-radius: 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    font: inherit;
+    transition: background .15s;
+}
+
+.video-list-item:hover {
+    background: var(--line);
+}
+
+.video-list-item > i.bi-play-circle-fill {
+    color: var(--primary-dark);
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* Wraps naturally up to 3 lines instead of single-line-truncating a long
+   title — the row's own height then just follows the title's, and (with
+   .week-columns' align-items:start) a tall row here no longer stretches
+   the neighbouring Documents/Quiz column to match it. */
+.video-list-item-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.video-watched-tick {
+    color: #22c55e;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* ── Compact document rows (course_render_document() output lives inside) ─── */
+.doc-list-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.doc-list-row .doc-preview {
+    background: var(--soft);
+    border-radius: 12px;
+    padding: 8px 10px;
+}
+
+.doc-list-row .doc-preview:hover {
+    background: var(--line);
+}
+
+.doc-list-row .doc-preview-icon {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+}
+
+.view-all-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: none;
+    color: var(--primary-dark);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 2px;
+    cursor: pointer;
+}
+
+.view-all-link:hover {
+    text-decoration: underline;
+}
+
+/* ── Week quiz card ────────────────────────────────────────────────────────── */
+.week-quiz-card {
+    background: var(--soft);
+    border-radius: 14px;
+    padding: 16px 14px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.week-quiz-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(124, 58, 237, .12);
+    color: #7c3aed;
+    font-size: 18px;
+    margin-bottom: 4px;
+}
+
+[data-theme="dark"] .week-quiz-icon {
+    background: rgba(167, 139, 250, .18);
+    color: #c4b5fd;
+}
+
+.week-quiz-card strong {
+    font-size: 13.5px;
+}
+
+.week-quiz-card .muted {
+    font-size: 11.5px;
+}
+
+.week-quiz-btn {
+    margin-top: 8px;
+    width: 100%;
+    justify-content: center;
+    border-radius: 999px;
+}
+
+/* ── Announcements & Tutorials tabs ───────────────────────────────────────── */
+.ann-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin: 14px 0 16px;
+}
+
+.ann-tab {
+    border: none;
+    background: none;
+    padding: 8px 4px 10px;
+    margin-right: 18px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+
+.ann-tab.active {
+    color: var(--primary-dark);
+    border-bottom-color: var(--primary);
+}
+
+/* :not([hidden]) — an unconditional `display` here would tie in cascade
+   specificity with the browser's own [hidden]{display:none} rule and win
+   the tie (author beats user-agent), so toggling .hidden via JS would
+   silently fail to actually hide either element. */
+.ann-new-btn:not([hidden]) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 9px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: none;
+    color: var(--primary-dark);
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 14px;
+}
+
+.ann-new-btn:hover {
+    background: var(--soft);
+}
+
+.ann-new-form:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 12px;
+    background: var(--soft);
+    border-radius: 14px;
+}
+
+.ann-new-form input,
+.ann-new-form textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13px;
+    background: var(--panel);
+    color: var(--text);
+    resize: vertical;
+}
+
+.ann-new-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.ann-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ann-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 14px;
+    background: var(--soft);
+}
+
+.ann-item-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(7, 167, 1, .12);
+    color: var(--primary-dark);
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.ann-item-body {
+    min-width: 0;
+}
+
+.ann-item-body strong {
+    display: block;
+    font-size: 13.5px;
+}
+
+.ann-item-body p {
+    margin: 2px 0 4px;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.4;
+}
+
+.ann-item-time {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: .8;
+}
+
+/* ── Tutorial video rows ──────────────────────────────────────────────────── */
+.tutorial-video-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    border: none;
+    background: var(--soft);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+}
+
+.tutorial-video-item:hover {
+    background: var(--line);
+}
+
+.tutorial-video-thumb {
+    position: relative;
+    width: 68px;
+    height: 44px;
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tutorial-video-thumb img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.tutorial-video-thumb i {
+    position: relative;
+    color: #fff;
+    font-size: 18px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+}
+
+.tutorial-video-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tutorial-video-info strong {
+    font-size: 13px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.tutorial-video-info .muted {
+    font-size: 11px;
+}
+
+/* ── Media modals (video player / PDF preview / "view all" lists) ────────── */
+.media-modal-overlay:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(15, 23, 42, .6);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: course-modal-fade .2s ease;
+}
+
+@keyframes course-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.media-modal {
+    background: var(--panel);
+    border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .35);
+    width: 100%;
+    max-width: 860px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: course-modal-scale .22s cubic-bezier(.2, .9, .3, 1.1);
+}
+
+@keyframes course-modal-scale {
+    from { transform: scale(.94); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
+.media-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+.media-modal-head strong {
+    font-size: 14.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-modal-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.media-modal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: var(--soft);
+    color: var(--text);
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.media-modal-btn:hover {
+    background: var(--line);
+}
+
+/* Video player */
+.video-modal-body {
+    background: #000;
+    aspect-ratio: 16 / 9;
+}
+
+.video-modal-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .media-modal-overlay:not([hidden]),
+    .media-modal {
+        animation: none;
+    }
+}
+
+
+/* "View all" list modal */
+.list-modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+}
+
+.list-modal-body .video-list-item,
+.list-modal-body .doc-list-row {
+    margin-bottom: 8px;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    .course-detail-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .week-columns,
+    .week-columns:has(.week-quiz-col) {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .week-quiz-col {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 640px) {
+    .course-progress-card {
+        padding: 12px 8px;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .course-stat {
+        flex: 1 1 40%;
+    }
+
+    .course-stat-sep {
+        display: none;
+    }
+
+    .course-stat-value {
+        font-size: 14px;
+    }
+
+    .course-stat-value--pct {
+        width: 36px;
+        height: 36px;
+        font-size: 11px;
+    }
+
+    .accordion-header {
+        padding: 12px 14px;
+        gap: 10px;
+    }
+
+    .accordion-panel {
+        padding: 0 14px 16px;
+    }
+
+    .week-columns,
+    .week-columns:has(.week-quiz-col) {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .week-quiz-col {
+        grid-column: auto;
+    }
+
+    .media-modal {
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .media-modal-overlay:not([hidden]) {
+        padding: 0;
+    }
+}

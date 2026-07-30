@@ -23,7 +23,10 @@ CREATE TABLE users (
     email VARCHAR(120) NULL,
     password VARCHAR(255) NOT NULL,
     role ENUM('admin', 'lecturer', 'student') NOT NULL DEFAULT 'student',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pref_email_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    pref_web_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    pref_chat_notifications TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB;
 
 CREATE TABLE courses (
@@ -32,6 +35,7 @@ CREATE TABLE courses (
     code VARCHAR(30) NOT NULL UNIQUE,
     semester ENUM('rain', 'harmattan') NOT NULL,
     lecturer_id INT NOT NULL,
+    color VARCHAR(7) NOT NULL DEFAULT '#2563eb',
     is_approved TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,

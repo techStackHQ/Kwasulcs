@@ -304,15 +304,6 @@ try {
 } catch (\Throwable $e) { /* silent fail — don't break the page */
 }
 
-// ── Unread notifications ──────────────────────────────────────────────────────
-$notifCount = 0;
-try {
-    $ns = db()->prepare('SELECT COUNT(*) FROM web_notifications WHERE user_id = ? AND is_read = 0');
-    $ns->execute([$user['id']]);
-    $notifCount = (int) $ns->fetchColumn();
-} catch (\Throwable $e) { /* table may not exist yet */
-}
-
 // ── Prev/Next month links ─────────────────────────────────────────────────────
 $prevM = $month === 1  ? 12 : $month - 1;
 $prevY = $month === 1  ? $year - 1 : $year;
@@ -333,34 +324,33 @@ $typeColors = [
 $flashMsg = $_SESSION['cal_flash'] ?? '';
 $flashErr = $_SESSION['cal_error'] ?? '';
 unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
+
+// ── Upcoming events for the sidebar card ──────────────────────────────────────
+$upcomingForSidebar = upcoming_events_for($user, 20);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendar — KWASU LCS</title>
-    <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="stylesheet" href="assets/calendar.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = 'Calendar';
+    $extraCss = ['assets/calendar.css'];
+    include __DIR__ . '/partials/head.php'; ?>
     <style>
         /* ── Custom time inputs ─────────────────────────────────────────── */
         .time-input-wrap {
             display: flex;
             align-items: center;
             gap: 4px;
-            background: #fff;
-            border: 1px solid #e2e8f0;
+            background: var(--panel);
+            border: 1px solid var(--line);
             border-radius: 14px;
             padding: 10px 14px;
-            transition: border-color .15s;
+            transition: border-color .15s, box-shadow .15s;
         }
 
         .time-input-wrap:focus-within {
-            border-color: #07a701;
-            outline: 2px solid rgba(7, 167, 1, .15);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(7, 167, 1, .15);
         }
 
         .time-part {
@@ -371,7 +361,7 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
             border-radius: 0 !important;
             font-size: 18px;
             font-weight: 700;
-            color: #0f172a;
+            color: var(--text);
             text-align: center;
             background: transparent;
         }
@@ -385,7 +375,7 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
         .time-colon {
             font-size: 20px;
             font-weight: 900;
-            color: #0f172a;
+            color: var(--text);
             line-height: 1;
             padding: 0 2px;
         }
@@ -393,7 +383,7 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
         .time-ampm {
             font-size: 12px;
             font-weight: 800;
-            color: #07a701;
+            color: var(--primary-dark);
             min-width: 26px;
             text-align: right;
         }
@@ -401,11 +391,13 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
 
     <header class="topbar">
         <div>
-            <div class="eyebrow">KWASU LCS</div>
-            <h1>📅 Academic Calendar</h1>
+            <div class="eyebrow"><?php echo brand_logo(); ?> KWASU LCS</div>
+            <h1><i class="bi bi-calendar3 icon"></i> Academic Calendar</h1>
             <p class="muted">
                 <?php if ($filterCourseId > 0): ?>
                     <?php foreach ($myCourses as $mc): if ((int)$mc['id'] === $filterCourseId): ?>
@@ -413,20 +405,12 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
                     <?php endif;
                     endforeach; ?>
                 <?php else: ?>
-                    All courses &amp; personal schedule
+                    Stay on track with your classes, tutorials, exams and more.
                 <?php endif; ?>
             </p>
         </div>
         <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-            <?php if ($notifCount > 0): ?>
-                <a class="btn secondary" href="notifications.php" style="position:relative;">
-                    🔔 <span class="notif-badge"><?php echo $notifCount; ?></span>
-                </a>
-            <?php endif; ?>
-            <button class="btn primary" id="btnNewEvent">+ <?php echo $isStaff ? 'New Event' : 'Personal Event'; ?></button>
-            <a class="btn secondary" href="dashboard.php">Dashboard</a>
-            <a class="btn danger" href="logout.php">Logout</a>
+            <a class="btn glass btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
         </div>
     </header>
 
@@ -441,137 +425,207 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
 
         <!-- ── Controls ──────────────────────────────────────────────────────────── -->
         <div class="cal-controls">
-            <div class="cal-nav">
-                <a class="btn secondary" href="calendar.php?y=<?php echo $prevY; ?>&m=<?php echo $prevM . $courseParam; ?>">‹ Prev</a>
-                <span class="cal-month-label"><?php echo $monthLabel; ?></span>
-                <a class="btn secondary" href="calendar.php?y=<?php echo $nextY; ?>&m=<?php echo $nextM . $courseParam; ?>">Next ›</a>
-                <a class="btn secondary" href="calendar.php<?php echo $courseParam ? '?' . ltrim($courseParam, '&') : ''; ?>">Today</a>
+            <div class="cal-nav-group">
+                <a class="cal-nav-btn" href="calendar.php?y=<?php echo $prevY; ?>&m=<?php echo $prevM . $courseParam; ?>" aria-label="Previous month"><i class="bi bi-chevron-left"></i></a>
+                <a class="cal-nav-btn" href="calendar.php?y=<?php echo $nextY; ?>&m=<?php echo $nextM . $courseParam; ?>" aria-label="Next month"><i class="bi bi-chevron-right"></i></a>
+                <a class="cal-today-btn" href="calendar.php<?php echo $courseParam ? '?' . ltrim($courseParam, '&') : ''; ?>">Today</a>
+                <span class="cal-month-label"><?php echo $monthLabel; ?> <i class="bi bi-chevron-down"></i></span>
             </div>
 
-            <form class="cal-filter-form" method="get">
-                <input type="hidden" name="y" value="<?php echo $year; ?>">
-                <input type="hidden" name="m" value="<?php echo $month; ?>">
-                <select name="course" onchange="this.form.submit()">
-                    <option value="0" <?php echo $filterCourseId === 0 ? 'selected' : ''; ?>>All Courses</option>
-                    <?php foreach ($myCourses as $mc): ?>
-                        <option value="<?php echo (int)$mc['id']; ?>" <?php echo (int)$mc['id'] === $filterCourseId ? 'selected' : ''; ?>>
-                            <?php echo h($mc['code'] . ' — ' . $mc['title']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
+            <div class="cal-view-toggle" role="tablist" id="calViewToggle">
+                <button type="button" class="cal-view-btn active" data-view="month" role="tab" aria-selected="true"><i class="bi bi-calendar3"></i> Month</button>
+                <button type="button" class="cal-view-btn" data-view="week" role="tab" aria-selected="false"><i class="bi bi-view-list"></i> Week</button>
+                <button type="button" class="cal-view-btn" data-view="day" role="tab" aria-selected="false"><i class="bi bi-calendar-day"></i> Day</button>
+            </div>
 
-            <div class="cal-legend">
-                <?php foreach ($typeColors as $type => $color): ?>
+            <button class="btn primary cal-add-event-btn" id="btnNewEvent"><i class="bi bi-plus-lg"></i> <?php echo $isStaff ? 'Add Event' : 'Personal Event'; ?></button>
+        </div>
+
+        <div class="cal-legend">
+            <?php foreach ($typeColors as $type => $color): ?>
+                <span class="legend-item">
                     <span class="legend-dot" style="background:<?php echo $color; ?>"></span>
                     <span class="legend-label"><?php echo ucfirst($type); ?></span>
-                <?php endforeach; ?>
-            </div>
+                </span>
+            <?php endforeach; ?>
         </div>
 
-        <!-- ── Month grid ────────────────────────────────────────────────────────── -->
-        <div class="cal-grid-wrap panel">
-            <div class="cal-dow-row">
-                <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow): ?>
-                    <div class="cal-dow"><?php echo $dow; ?></div>
-                <?php endforeach; ?>
-            </div>
-
-            <div class="cal-days">
-                <?php for ($b = 0; $b < $firstWeekday; $b++): ?>
-                    <div class="cal-day cal-day--blank"></div>
-                <?php endfor; ?>
-
-                <?php for ($d = 1; $d <= $daysInMonth; $d++):
-                    // FIX: only highlight if we're actually viewing the current real month+year
-                    $isToday   = ($d === $realToday && $month === $realTodayMonth && $year === $realTodayYear);
-                    $dayEvents = $eventsByDay[$d] ?? [];
-                    $dateStr   = sprintf('%04d-%02d-%02d', $year, $month, $d);
-                ?>
-                    <div class="cal-day <?php echo $isToday ? 'cal-day--today' : ''; ?>"
-                        data-date="<?php echo $dateStr; ?>">
-                        <span class="cal-day-num"><?php echo $d; ?></span>
-
-                        <?php foreach (array_slice($dayEvents, 0, 3) as $ev):
-                            $color = $typeColors[$ev['event_type']] ?? '#64748b';
-                        ?>
-                            <button class="cal-event-chip"
-                                style="border-left-color:<?php echo $color; ?>;background:<?php echo $color; ?>18;"
-                                data-evid="<?php echo (int)$ev['id']; ?>"
-                                title="<?php echo h($ev['title']); ?>">
-                                <span class="chip-dot" style="background:<?php echo $color; ?>"></span>
-                                <span class="chip-time"><?php echo date('g:ia', strtotime($ev['start_datetime'])); ?></span>
-                                <span class="chip-title"><?php echo h($ev['title']); ?></span>
-                            </button>
+        <div class="cal-layout">
+            <div class="cal-main">
+                <!-- ── Month grid ────────────────────────────────────────────────────── -->
+                <div class="cal-grid-wrap panel" id="monthView">
+                    <div class="cal-dow-row">
+                        <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dow): ?>
+                            <div class="cal-dow"><?php echo $dow; ?></div>
                         <?php endforeach; ?>
-
-                        <?php if (count($dayEvents) > 3): ?>
-                            <button class="cal-more-chip" data-date="<?php echo $dateStr; ?>">
-                                +<?php echo count($dayEvents) - 3; ?> more
-                            </button>
-                        <?php endif; ?>
-
-                        <button class="cal-add-btn" data-date="<?php echo $dateStr; ?>" title="Add event">+</button>
                     </div>
-                <?php endfor; ?>
-            </div>
-        </div>
 
-        <!-- ── Upcoming list ─────────────────────────────────────────────────────── -->
-        <div class="cal-upcoming panel">
-            <h2>Upcoming Events — <?php echo $monthLabel; ?></h2>
-            <?php
-            $upcoming = array_values(array_filter(
-                $allEvents,
-                fn($ev) =>
-                strtotime($ev['start_datetime']) >= strtotime($todayFull)
-            ));
-            ?>
-            <?php if (!$upcoming): ?>
-                <p class="muted cal-empty">No upcoming events this month. Click <strong>+ New Event</strong> to add one.</p>
-            <?php endif; ?>
-            <?php foreach (array_slice($upcoming, 0, 15) as $ev):
-                $color = $typeColors[$ev['event_type']] ?? '#64748b';
-            ?>
-                <div class="upcoming-item" style="border-left-color:<?php echo $color; ?>;" data-evid="<?php echo (int)$ev['id']; ?>">
-                    <div class="upcoming-date">
-                        <span class="udate-day"><?php echo date('d', strtotime($ev['start_datetime'])); ?></span>
-                        <span class="udate-mon"><?php echo date('M', strtotime($ev['start_datetime'])); ?></span>
-                    </div>
-                    <div class="upcoming-info">
-                        <strong><?php echo h($ev['title']); ?></strong>
-                        <div class="muted">
-                            <?php echo date('g:i A', strtotime($ev['start_datetime'])); ?>
-                            –
-                            <?php echo date('g:i A', strtotime($ev['end_datetime'])); ?>
-                            <?php if ($ev['course_code']): ?>
-                                &nbsp;·&nbsp; <?php echo h($ev['course_code']); ?>
-                            <?php endif; ?>
-                            <?php if ($ev['is_recurring']): ?>
-                                &nbsp;·&nbsp; 🔁 <?php echo h(recurrence_label($ev['recurrence_rule'] ?? '')); ?>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($ev['description']): ?>
-                            <div class="upcoming-desc"><?php echo h($ev['description']); ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="upcoming-actions">
-                        <span class="badge ev-badge" style="background:<?php echo $color; ?>22;color:<?php echo $color; ?>;border:1px solid <?php echo $color; ?>55;">
-                            <?php echo ucfirst(str_replace('_', ' ', $ev['event_type'])); ?>
-                        </span>
-                        <?php if ($isStaff || (int)$ev['created_by'] === (int)$user['id']): ?>
-                            <button class="btn tiny secondary btn-edit-ev" data-evid="<?php echo (int)$ev['id']; ?>">Edit</button>
-                            <form method="post" action="calendar_delete.php"
-                                onsubmit="return confirm('Delete this event?');"
-                                style="display:inline;">
-                                <input type="hidden" name="event_id" value="<?php echo (int)$ev['id']; ?>">
-                                <input type="hidden" name="redirect" value="calendar.php?y=<?php echo $year; ?>&amp;m=<?php echo $month; ?><?php echo $filterCourseId ? '&amp;course=' . $filterCourseId : ''; ?>">
-                                <button class="btn tiny danger" type="submit">Delete</button>
-                            </form>
-                        <?php endif; ?>
+                    <div class="cal-days">
+                        <?php for ($b = 0; $b < $firstWeekday; $b++): ?>
+                            <div class="cal-day cal-day--blank"></div>
+                        <?php endfor; ?>
+
+                        <?php for ($d = 1; $d <= $daysInMonth; $d++):
+                            // FIX: only highlight if we're actually viewing the current real month+year
+                            $isToday   = ($d === $realToday && $month === $realTodayMonth && $year === $realTodayYear);
+                            $dayEvents = $eventsByDay[$d] ?? [];
+                            $dateStr   = sprintf('%04d-%02d-%02d', $year, $month, $d);
+                        ?>
+                            <div class="cal-day <?php echo $isToday ? 'cal-day--today' : ''; ?>"
+                                data-date="<?php echo $dateStr; ?>">
+                                <span class="cal-day-num"><?php echo $d; ?></span>
+
+                                <?php foreach (array_slice($dayEvents, 0, 3) as $ev):
+                                    $color = $typeColors[$ev['event_type']] ?? '#64748b';
+                                ?>
+                                    <button class="cal-event-chip"
+                                        style="border-left-color:<?php echo $color; ?>;background:<?php echo $color; ?>18;"
+                                        data-evid="<?php echo (int)$ev['id']; ?>"
+                                        data-type="<?php echo h($ev['event_type']); ?>"
+                                        title="<?php echo h($ev['title']); ?>">
+                                        <span class="chip-dot" style="background:<?php echo $color; ?>"></span>
+                                        <span class="chip-time"><?php echo date('g:ia', strtotime($ev['start_datetime'])); ?></span>
+                                        <span class="chip-title"><?php echo h($ev['title']); ?></span>
+                                    </button>
+                                <?php endforeach; ?>
+
+                                <?php if (count($dayEvents) > 3): ?>
+                                    <button class="cal-more-chip" data-date="<?php echo $dateStr; ?>">
+                                        +<?php echo count($dayEvents) - 3; ?> more
+                                    </button>
+                                <?php endif; ?>
+
+                                <button class="cal-add-btn" data-date="<?php echo $dateStr; ?>" title="Add event">+</button>
+                            </div>
+                        <?php endfor; ?>
                     </div>
                 </div>
-            <?php endforeach; ?>
+
+                <!-- ── Week / Day views (client-side, rendered from ALL_EVENTS) ─────────── -->
+                <div class="cal-grid-wrap panel" id="weekView" hidden>
+                    <div class="cal-dow-row" id="weekDowRow"></div>
+                    <div class="cal-week-body" id="weekBody"></div>
+                </div>
+                <div class="panel" id="dayView" hidden>
+                    <div class="cal-day-view-header" id="dayViewHeader"></div>
+                    <div class="cal-day-view-body" id="dayViewBody"></div>
+                </div>
+            </div>
+
+            <!-- ── Right sidebar ─────────────────────────────────────────────────────── -->
+            <aside class="cal-sidebar">
+                <div class="panel cal-side-card" id="filtersCard">
+                    <button type="button" class="cal-side-card-head" id="filtersToggle" aria-expanded="true">
+                        <h2>Filters</h2>
+                        <i class="bi bi-chevron-up cal-side-chevron"></i>
+                    </button>
+                    <div class="cal-side-card-body" id="filtersBody">
+                        <!-- Colour key only — not interactive. Course filtering still
+                             works via the deep link from course.php ("Course Calendar"),
+                             it's just no longer exposed as a dropdown here. -->
+                        <div class="cal-color-key">
+                            <?php foreach ($typeColors as $type => $color): ?>
+                                <div class="cal-color-key-item">
+                                    <span class="legend-dot" style="background:<?php echo $color; ?>"></span>
+                                    <?php echo ucfirst($type); ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel cal-side-card">
+                    <div class="cal-mini-cal">
+                        <div class="cal-mini-cal-head">
+                            <h2><?php echo $monthLabel; ?></h2>
+                            <div class="cal-mini-nav">
+                                <a class="cal-mini-nav-btn" href="calendar.php?y=<?php echo $prevY; ?>&m=<?php echo $prevM . $courseParam; ?>" aria-label="Previous month"><i class="bi bi-chevron-left"></i></a>
+                                <a class="cal-mini-nav-btn" href="calendar.php?y=<?php echo $nextY; ?>&m=<?php echo $nextM . $courseParam; ?>" aria-label="Next month"><i class="bi bi-chevron-right"></i></a>
+                            </div>
+                        </div>
+                        <div class="cal-mini-dow-row">
+                            <?php foreach (['S', 'M', 'T', 'W', 'T', 'F', 'S'] as $dow): ?>
+                                <span><?php echo $dow; ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="cal-mini-days">
+                            <?php
+                            // Leading days from the previous month, so the mini grid always fills full weeks
+                            $miniPrevDays = (int) date('t', mktime(0, 0, 0, $prevM, 1, $prevY));
+                            for ($b = $firstWeekday - 1; $b >= 0; $b--):
+                                $pd = $miniPrevDays - $b;
+                            ?>
+                                <a class="cal-mini-day cal-mini-day--muted" href="calendar.php?y=<?php echo $prevY; ?>&m=<?php echo $prevM . $courseParam; ?>"><?php echo $pd; ?></a>
+                            <?php endfor; ?>
+                            <?php for ($d = 1; $d <= $daysInMonth; $d++):
+                                $isToday = ($d === $realToday && $month === $realTodayMonth && $year === $realTodayYear);
+                                $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
+                            ?>
+                                <button type="button" class="cal-mini-day <?php echo $isToday ? 'cal-mini-day--today' : ''; ?>" data-date="<?php echo $dateStr; ?>"><?php echo $d; ?></button>
+                            <?php endfor; ?>
+                            <?php
+                            $miniTrailing = (7 - (($firstWeekday + $daysInMonth) % 7)) % 7;
+                            for ($n = 1; $n <= $miniTrailing; $n++):
+                            ?>
+                                <a class="cal-mini-day cal-mini-day--muted" href="calendar.php?y=<?php echo $nextY; ?>&m=<?php echo $nextM . $courseParam; ?>"><?php echo $n; ?></a>
+                            <?php endfor; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel cal-side-card">
+                    <div class="cal-side-card-head cal-side-card-head--static">
+                        <h2>Upcoming Events</h2>
+                        <?php if (count($upcomingForSidebar) > 5): ?>
+                            <button type="button" class="cal-view-all-link" id="upcomingViewAllBtn">View all</button>
+                        <?php endif; ?>
+                    </div>
+                    <div class="cal-side-card-body">
+                        <?php if (!$upcomingForSidebar): ?>
+                            <div class="cal-empty-state">
+                                <svg width="104" height="88" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <rect x="20" y="24" width="80" height="66" rx="10" fill="var(--soft)" />
+                                    <rect x="20" y="24" width="80" height="20" rx="10" fill="var(--primary)" />
+                                    <rect x="20" y="34" width="80" height="10" fill="var(--primary)" />
+                                    <rect x="36" y="14" width="6" height="16" rx="3" fill="var(--primary)" />
+                                    <rect x="78" y="14" width="6" height="16" rx="3" fill="var(--primary)" />
+                                    <circle cx="60" cy="66" r="18" fill="#dcfce7" />
+                                    <path d="M52 66l6 6 12-12" stroke="var(--primary)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                <p class="muted">No upcoming events yet.</p>
+                            </div>
+                        <?php endif; ?>
+                        <?php foreach ($upcomingForSidebar as $i => $ev):
+                            $color = $typeColors[$ev['event_type']] ?? '#64748b';
+                        ?>
+                            <button type="button"
+                                class="cal-upcoming-card-row<?php echo $i >= 5 ? ' cal-upcoming-card-row--extra' : ''; ?>"
+                                onclick="openEventDetail(<?php echo (int)$ev['id']; ?>)">
+                                <span class="upcoming-date">
+                                    <span class="udate-day"><?php echo date('d', strtotime($ev['start_datetime'])); ?></span>
+                                    <span class="udate-mon"><?php echo date('M', strtotime($ev['start_datetime'])); ?></span>
+                                </span>
+                                <span class="cal-upcoming-card-info">
+                                    <strong><?php echo h($ev['title']); ?></strong>
+                                    <span class="muted cal-upcoming-card-meta">
+                                        <?php if ($ev['course_code']): ?><?php echo h($ev['course_code']); ?> · <?php endif; ?>
+                                        <?php echo date('g:i A', strtotime($ev['start_datetime'])); ?>
+                                        <?php if ($ev['location']): ?> · <i class="bi bi-geo-alt-fill"></i> <?php echo h($ev['location']); ?><?php endif; ?>
+                                    </span>
+                                    <span class="cal-upcoming-card-badges">
+                                        <?php if ($ev['is_recurring']): ?>
+                                            <span class="badge cal-repeat-badge"><i class="bi bi-arrow-repeat"></i> <?php echo h(recurrence_label($ev['recurrence_rule'] ?? '')); ?></span>
+                                        <?php endif; ?>
+                                        <span class="badge ev-badge" style="background:<?php echo $color; ?>22;color:<?php echo $color; ?>;">
+                                            <?php echo ucfirst($ev['event_type']); ?>
+                                        </span>
+                                    </span>
+                                </span>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </aside>
         </div>
 
     </main>
@@ -683,7 +737,7 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
                     <div class="recurrence-row">
                         <label class="checkbox-label">
                             <input type="checkbox" name="is_recurring" id="fRecurring" value="1">
-                            🔁 Repeat this event
+                            <i class="bi bi-arrow-repeat icon"></i> Repeat this event
                         </label>
                     </div>
                     <div id="recurrenceFields" class="form-grid-cal" style="display:none;">
@@ -747,6 +801,18 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
         const IS_STAFF = <?php echo $isStaff ? 'true' : 'false'; ?>;
         const USER_ID = <?php echo (int)$user['id']; ?>;
         const FILTER_COURSE = <?php echo $filterCourseId; ?>;
+        const TODAY_STR = "<?php echo $todayFull; ?>";
+        const VIEW_YEAR = <?php echo $year; ?>;
+        const VIEW_MONTH = <?php echo $month; ?>;
+        const REAL_TODAY_YEAR = <?php echo $realTodayYear; ?>;
+        const REAL_TODAY_MONTH = <?php echo $realTodayMonth; ?>;
+
+        // Reference date for the Week/Day tab views — defaults to today when
+        // viewing the current month, otherwise the 1st of the viewed month,
+        // and updates whenever a day is clicked (main grid or mini calendar).
+        let selectedDate = (VIEW_YEAR === REAL_TODAY_YEAR && VIEW_MONTH === REAL_TODAY_MONTH)
+            ? TODAY_STR
+            : `${VIEW_YEAR}-${String(VIEW_MONTH).padStart(2, '0')}-01`;
 
         // ── Time input helpers — global scope so all modal functions can access them ──
         function getTimePart(id, min, max, def) {
@@ -919,6 +985,47 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
             document.getElementById('fStartH').addEventListener('change', syncEndFromStart);
             document.getElementById('fStartM').addEventListener('change', syncEndFromStart);
 
+            // ── Month / Week / Day view toggle ─────────────────────────────────
+            document.querySelectorAll('.cal-view-btn').forEach(btn => {
+                btn.addEventListener('click', () => switchView(btn.dataset.view));
+            });
+
+            // ── Day cell click → select (chip/add/more buttons stopPropagation,
+            //    so this only fires for clicks on empty cell space) ────────────
+            document.querySelectorAll('.cal-day:not(.cal-day--blank)').forEach(cell => {
+                cell.addEventListener('click', () => selectDay(cell.dataset.date));
+            });
+
+            // ── Mini calendar day click (adjacent-month <a> days just navigate) ─
+            document.querySelectorAll('button.cal-mini-day').forEach(btn => {
+                btn.addEventListener('click', () => selectDay(btn.dataset.date, { scroll: true }));
+            });
+
+            // ── Filters card collapse ───────────────────────────────────────────
+            const filtersToggle = document.getElementById('filtersToggle');
+            if (filtersToggle) {
+                filtersToggle.addEventListener('click', () => {
+                    const card = document.getElementById('filtersCard');
+                    const collapsed = card.classList.toggle('collapsed');
+                    filtersToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                });
+            }
+
+            // ── Upcoming Events card: "View all" expands the rest in place ──────
+            const upcomingViewAllBtn = document.getElementById('upcomingViewAllBtn');
+            if (upcomingViewAllBtn) {
+                upcomingViewAllBtn.addEventListener('click', () => {
+                    const expanded = upcomingViewAllBtn.classList.toggle('expanded');
+                    document.querySelectorAll('.cal-upcoming-card-row--extra').forEach(row => {
+                        row.style.display = expanded ? '' : 'none';
+                    });
+                    upcomingViewAllBtn.textContent = expanded ? 'Show less' : 'View all';
+                });
+            }
+
+            // Highlight today (or the mini-cal) as selected on first load
+            selectDay(selectedDate);
+
         }); // end DOMContentLoaded
 
         // ── Open event detail modal ────────────────────────────────────────────────
@@ -943,16 +1050,16 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
             ${ucFirst(ev.event_type.replace('_',' '))}
             ${ev.scope !== 'personal' ? ' · ' + ev.scope : ''}
         </div>
-        <div class="detail-row"><span class="detail-icon">🕐</span>
+        <div class="detail-row"><span class="detail-icon"><i class="bi bi-clock-fill"></i></span>
             <span>${fmtDT(ev.start_datetime)} – ${fmtDT(ev.end_datetime)}</span>
         </div>`;
 
-            if (ev.course_code) body += row('📖', ev.course_code);
-            if (ev.location) body += row('📍', ev.location);
-            if (ev.description) body += row('📝', ev.description);
+            if (ev.course_code) body += row('<i class="bi bi-book-half"></i>', ev.course_code);
+            if (ev.location) body += row('<i class="bi bi-geo-alt-fill"></i>', ev.location);
+            if (ev.description) body += row('<i class="bi bi-card-text"></i>', ev.description);
             if (Number(ev.is_recurring)) {
                 const until = ev.recurrence_end_date ? ' until ' + ev.recurrence_end_date : ' (no end date)';
-                body += row('🔁', 'Repeats: ' + ev.recurrence_rule + until);
+                body += row('<i class="bi bi-arrow-repeat"></i>', 'Repeats: ' + ev.recurrence_rule + until);
             }
 
             document.getElementById('detailBody').innerHTML = body;
@@ -1056,16 +1163,11 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
         }
 
         // ── Day-view modal ─────────────────────────────────────────────────────────
-        function openDayView(dateStr) {
+        // Shared by the day-view modal AND the inline Day tab — builds the same
+        // agenda-row markup from ALL_EVENTS for a given date, honoring the
+        // sidebar's type-filter checkboxes.
+        function dayEventsHtml(dateStr, emptyMsg) {
             const dt = new Date(dateStr + 'T00:00');
-            document.getElementById('dayTitle').textContent =
-                dt.toLocaleDateString('en-NG', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric'
-                });
-
             const dayEvs = ALL_EVENTS.filter(ev => ev.start_datetime.slice(0, 10) === dateStr);
             let html = '';
             dayEvs.forEach(ev => {
@@ -1088,8 +1190,90 @@ unset($_SESSION['cal_flash'], $_SESSION['cal_error']);
                 <span class="badge" style="background:${color}22;color:${color};">${ucFirst(ev.event_type)}</span>
             </div>`;
             });
-            document.getElementById('dayBody').innerHTML = html || '<p class="muted" style="padding:12px 0">No events on this day.</p>';
+            return html || `<p class="muted" style="padding:12px 0">${emptyMsg}</p>`;
+        }
+
+        function openDayView(dateStr) {
+            const dt = new Date(dateStr + 'T00:00');
+            document.getElementById('dayTitle').textContent =
+                dt.toLocaleDateString('en-NG', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                });
+            document.getElementById('dayBody').innerHTML = dayEventsHtml(dateStr, 'No events on this day.');
             document.getElementById('dayOverlay').hidden = false;
+        }
+
+        // ── Month / Week / Day tab switching ──────────────────────────────────────
+        function renderWeekTabView(dateStr) {
+            const base = new Date(dateStr + 'T00:00');
+            const sunday = new Date(base);
+            sunday.setDate(base.getDate() - base.getDay());
+            const dowNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let dowHtml = '';
+            let bodyHtml = '';
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(sunday);
+                d.setDate(sunday.getDate() + i);
+                const ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                const isToday = ds === TODAY_STR;
+                dowHtml += `<div class="cal-dow">${dowNames[i]} <span class="cal-week-daynum${isToday ? ' cal-week-daynum--today' : ''}">${d.getDate()}</span></div>`;
+
+                const dayEvs = ALL_EVENTS.filter(ev => ev.start_datetime.slice(0, 10) === ds);
+                let chips = '';
+                dayEvs.forEach(ev => {
+                    const color = TYPE_COLORS[ev.event_type] || '#64748b';
+                    const timeStr = new Date(ev.start_datetime.replace(' ', 'T')).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' });
+                    chips += `<button class="cal-event-chip" style="border-left-color:${color};background:${color}18;" data-type="${ev.event_type}" onclick="openEventDetail(${ev.id})" title="${ev.title}">
+                        <span class="chip-dot" style="background:${color}"></span>
+                        <span class="chip-time">${timeStr}</span>
+                        <span class="chip-title">${ev.title}</span>
+                    </button>`;
+                });
+                bodyHtml += `<div class="cal-week-col${isToday ? ' cal-week-col--today' : ''}" data-date="${ds}">${chips}</div>`;
+            }
+            document.getElementById('weekDowRow').innerHTML = dowHtml;
+            document.getElementById('weekBody').innerHTML = bodyHtml;
+        }
+
+        function renderDayTabView(dateStr) {
+            const dt = new Date(dateStr + 'T00:00');
+            document.getElementById('dayViewHeader').innerHTML =
+                `<h2>${dt.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h2>`;
+            document.getElementById('dayViewBody').innerHTML = dayEventsHtml(dateStr, 'No events scheduled for this day.');
+        }
+
+        function switchView(view) {
+            document.querySelectorAll('.cal-view-btn').forEach(btn => {
+                const active = btn.dataset.view === view;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            document.getElementById('monthView').hidden = view !== 'month';
+            document.getElementById('weekView').hidden = view !== 'week';
+            document.getElementById('dayView').hidden = view !== 'day';
+            if (view === 'week') renderWeekTabView(selectedDate);
+            if (view === 'day') renderDayTabView(selectedDate);
+        }
+
+        // ── Day selection (main grid + mini calendar) ─────────────────────────────
+        function selectDay(dateStr, opts) {
+            opts = opts || {};
+            selectedDate = dateStr;
+            document.querySelectorAll('.cal-day--selected').forEach(el => el.classList.remove('cal-day--selected'));
+            const cell = document.querySelector(`.cal-day[data-date="${dateStr}"]`);
+            if (cell) {
+                cell.classList.add('cal-day--selected');
+                if (opts.scroll) cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            document.querySelectorAll('.cal-mini-day').forEach(el => {
+                el.classList.toggle('cal-mini-day--selected', el.dataset.date === dateStr);
+            });
+            const activeView = document.querySelector('.cal-view-btn.active')?.dataset.view || 'month';
+            if (activeView === 'week') renderWeekTabView(selectedDate);
+            if (activeView === 'day') renderDayTabView(selectedDate);
         }
 
         // ── Toggle helpers ─────────────────────────────────────────────────────────

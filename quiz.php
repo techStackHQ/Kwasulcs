@@ -64,12 +64,7 @@ try {
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quiz — <?php echo h($course['code']); ?></title>
-    <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
-    <link rel="stylesheet" href="assets/style.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = 'Quiz — ' . $course['code']; include __DIR__ . '/partials/head.php'; ?>
     <style>
         /* ── Quiz-specific styles ─────────────────────────────────────── */
         .quiz-shell {
@@ -117,7 +112,7 @@ try {
         .type-tab.active {
             border-color: #07a701;
             background: #f0fdf4;
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
         .count-row {
@@ -140,7 +135,7 @@ try {
 
         .count-val {
             font-weight: 900;
-            color: #07a701;
+            color: var(--primary-dark);
             min-width: 28px;
             text-align: center;
             font-size: 18px;
@@ -165,21 +160,31 @@ try {
 
         .image-upload-label:hover {
             border-color: #07a701;
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
-        #imagePreview {
-            max-width: 100%;
-            border-radius: 10px;
-            margin-top: 10px;
-            display: none;
+        .img-thumb {
+            position: relative; width: 84px; height: 84px;
+            border-radius: 10px; overflow: hidden; border: 2px solid #e2e8f0;
+        }
+        .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .img-thumb .img-remove-btn {
+            position: absolute; top: 2px; right: 2px;
+            width: 20px; height: 20px; border-radius: 50%;
+            background: rgba(15,23,42,.75); color: #fff; border: none;
+            font-size: 12px; line-height: 1; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
         }
 
         .generate-btn {
             width: 100%;
             padding: 16px;
             border-radius: 14px;
-            background: linear-gradient(135deg, #07a701, #059669);
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
             border: none;
             font: inherit;
@@ -298,6 +303,45 @@ try {
             color: #7e22ce;
         }
 
+        .q-marks-badge {
+            display: inline-block;
+            font-size: 11px; font-weight: 800;
+            padding: 3px 10px; border-radius: 999px;
+            background: #dcfce7; color: #166534;
+            margin-left: 8px; vertical-align: middle;
+        }
+
+        .question-diagram {
+            margin: 14px 0; text-align: center;
+        }
+        .question-diagram img {
+            max-width: 100%; max-height: 380px;
+            border-radius: 12px; border: 1px solid #e2e8f0;
+        }
+
+        .marks-awarded-line {
+            margin-top: 14px; font-size: 14px; color: #334155;
+        }
+        .marks-awarded-line strong { color: var(--primary-dark); }
+
+        .breakdown-box {
+            margin-top: 14px; padding: 14px 16px;
+            background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;
+        }
+        .breakdown-title { font-weight: 800; font-size: 13px; margin-bottom: 10px; color: #334155; }
+        .breakdown-item {
+            padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: 13px;
+        }
+        .breakdown-item:last-child { border-bottom: none; }
+        .breakdown-item-head {
+            display: flex; justify-content: space-between; gap: 10px;
+            font-weight: 600; color: #1e293b; margin-bottom: 4px;
+        }
+        .breakdown-row { display: flex; gap: 14px; font-size: 12px; margin-top: 4px; }
+        .bd-yes { color: #16a34a; font-weight: 700; }
+        .bd-no  { color: #dc2626; font-weight: 700; }
+        .breakdown-feedback { color: #64748b; font-size: 12px; margin-top: 4px; }
+
         .question-text {
             font-size: 17px;
             font-weight: 600;
@@ -411,7 +455,7 @@ try {
         }
 
         .explanation-box strong {
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
         /* Nav */
@@ -443,16 +487,24 @@ try {
         }
 
         .nav-btn.primary {
-            background: #07a701;
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
         }
 
         .nav-btn.primary:hover {
-            background: #059669;
+            background-color: #059669;
         }
 
         .nav-btn.submit-all {
-            background: linear-gradient(135deg, #07a701, #059669);
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
             flex: 1;
             padding: 16px;
@@ -566,6 +618,8 @@ try {
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
     <header class="topbar">
         <div>
             <div class="eyebrow">Quiz</div>
@@ -573,9 +627,7 @@ try {
             <p class="muted">AI-generated practice quiz · <?php echo h($course['lecturer_name']); ?></p>
         </div>
         <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-            <a class="btn secondary" href="course.php?id=<?php echo $courseId; ?>">← Back to Course</a>
-            <a class="btn danger" href="logout.php">Logout</a>
+            <a class="btn glass" href="course.php?id=<?php echo $courseId; ?>">← Back to Course</a>
         </div>
     </header>
 
@@ -585,13 +637,13 @@ try {
             <!-- ── Setup ──────────────────────────────────────────────────────────── -->
             <div id="setupSection">
                 <div class="setup-card">
-                    <h2>🎯 Generate Practice Quiz</h2>
+                    <h2><i class="bi bi-bullseye icon"></i> Generate Practice Quiz</h2>
 
                     <!-- Scope: whole course or specific topic -->
                     <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">Quiz Scope</label>
                     <div class="scope-tabs">
-                        <button class="scope-tab active" onclick="setScope('course',this)">📚 Whole Course</button>
-                        <button class="scope-tab" onclick="setScope('topic',this)">📖 Specific Week</button>
+                        <button class="scope-tab active" onclick="setScope('course',this)"><i class="bi bi-journal-bookmark-fill icon"></i> Whole Course</button>
+                        <button class="scope-tab" onclick="setScope('topic',this)"><i class="bi bi-book-half icon"></i> Specific Week</button>
                     </div>
 
                     <div id="topicPicker" style="display:none;margin-bottom:16px;">
@@ -608,10 +660,10 @@ try {
                     <!-- Question type -->
                     <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">Question Type</label>
                     <div class="type-tabs" style="margin-bottom:16px;">
-                        <button class="type-tab" onclick="setQuestionType('objective',this)">📝 Objective</button>
-                        <button class="type-tab" onclick="setQuestionType('theory',this)">📖 Theory</button>
-                        <button class="type-tab" onclick="setQuestionType('truefalse',this)">✅ True/False</button>
-                        <button class="type-tab active" onclick="setQuestionType('hybrid',this)">🔀 Hybrid</button>
+                        <button class="type-tab" onclick="setQuestionType('objective',this)"><i class="bi bi-pencil-fill icon"></i> Objective</button>
+                        <button class="type-tab" onclick="setQuestionType('theory',this)"><i class="bi bi-book-half icon"></i> Theory</button>
+                        <button class="type-tab" onclick="setQuestionType('truefalse',this)"><i class="bi bi-check-circle-fill icon"></i> True/False</button>
+                        <button class="type-tab active" onclick="setQuestionType('hybrid',this)"><i class="bi bi-shuffle icon"></i> Hybrid</button>
                     </div>
 
                     <!-- Number of questions -->
@@ -621,21 +673,21 @@ try {
                         <span class="count-val" id="qCountVal">10</span>
                     </div>
 
-                    <!-- Past question image upload -->
+                    <!-- Past question images upload (up to 5) -->
                     <div class="image-upload-row">
                         <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">
-                            📷 Upload Past Question Paper (optional)
+                            <i class="bi bi-camera-fill icon"></i> Upload Past Question Papers / Diagrams (optional, up to 5)
                         </label>
                         <label class="image-upload-label" for="imageInput">
-                            <span style="font-size:24px;">📸</span>
-                            <span id="imageLabel">Take a photo or upload an image of a past question paper — the AI will match its style</span>
+                            <span style="font-size:24px;"><i class="bi bi-camera-fill"></i></span>
+                            <span id="imageLabel">Upload past question papers for style matching, or diagrams the AI can attach to relevant questions</span>
                         </label>
-                        <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="handleImage(this)">
-                        <img id="imagePreview" alt="Past question preview">
+                        <input type="file" id="imageInput" accept="image/*" multiple style="display:none" onchange="handleImages(this)">
+                        <div id="imagePreviewGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;"></div>
                     </div>
 
                     <button class="generate-btn" id="generateBtn" onclick="generateQuiz()">
-                        ✨ Generate Quiz
+                        <i class="bi bi-stars icon"></i> Generate Quiz
                     </button>
                 </div>
 
@@ -650,7 +702,7 @@ try {
                                     <div class="muted"><?php echo date('d M Y, g:i A', strtotime($hist['created_at'])); ?></div>
                                 </div>
                                 <div style="text-align:right;">
-                                    <div style="font-weight:900;font-size:18px;color:#07a701;"><?php echo $hist['score']; ?>/<?php echo $hist['total']; ?></div>
+                                    <div style="font-weight:900;font-size:18px;color:var(--primary-dark);"><?php echo $hist['score']; ?>/<?php echo $hist['total']; ?></div>
                                     <div class="muted"><?php echo $hist['total'] > 0 ? round($hist['score'] / $hist['total'] * 100) : 0; ?>%</div>
                                 </div>
                             </div>
@@ -688,11 +740,11 @@ try {
 
     <script>
         const COURSE_ID = <?php echo $courseId; ?>;
-        let quizData = null; // {session_id, questions, total}
+        let quizData = null; // {session_id, questions, total, uploaded_images}
         let answers = {}; // {question_no: answer}
         let currentQ = 0;
         let submitted = false;
-        let imageB64 = null;
+        let imagesB64 = []; // array of base64 images, up to 5
         let scope = 'course';
         let topicId = null;
         let questionType = 'hybrid';
@@ -712,18 +764,48 @@ try {
             btn.classList.add('active');
         }
 
-        // ── Image upload ──────────────────────────────────────────────────────────────
-        function handleImage(input) {
-            const file = input.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                imageB64 = e.target.result; // includes data:image/...;base64, prefix
-                document.getElementById('imagePreview').src = imageB64;
-                document.getElementById('imagePreview').style.display = 'block';
-                document.getElementById('imageLabel').textContent = '✅ ' + file.name + ' — image loaded';
-            };
-            reader.readAsDataURL(file);
+        // ── Image upload (up to 5) ───────────────────────────────────────────────────────
+        function handleImages(input) {
+            const files = Array.from(input.files || []);
+            if (!files.length) return;
+
+            const room = 5 - imagesB64.length;
+            if (room <= 0) {
+                alert('Maximum of 5 images allowed. Remove one first.');
+                input.value = '';
+                return;
+            }
+            const toAdd = files.slice(0, room);
+
+            let loaded = 0;
+            toAdd.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    imagesB64.push(e.target.result);
+                    loaded++;
+                    if (loaded === toAdd.length) renderImageGrid();
+                };
+                reader.readAsDataURL(file);
+            });
+            input.value = '';
+        }
+
+        function removeImage(idx) {
+            imagesB64.splice(idx, 1);
+            renderImageGrid();
+        }
+
+        function renderImageGrid() {
+            const grid = document.getElementById('imagePreviewGrid');
+            grid.innerHTML = imagesB64.map((src, i) => `
+                <div class="img-thumb">
+                    <img src="${src}" alt="Uploaded image ${i+1}">
+                    <button class="img-remove-btn" onclick="removeImage(${i})" title="Remove">✕</button>
+                </div>
+            `).join('');
+            document.getElementById('imageLabel').innerHTML = imagesB64.length
+                ? `<i class="bi bi-check-circle-fill icon"></i> ${imagesB64.length} image(s) loaded — ${5 - imagesB64.length} slot(s) remaining`
+                : 'Upload past question papers for style matching, or diagrams the AI can attach to relevant questions';
         }
 
         // ── Generate quiz ─────────────────────────────────────────────────────────────
@@ -748,7 +830,7 @@ try {
                         scope: scope,
                         count: count,
                         question_type: questionType,
-                        image_b64: imageB64,
+                        images_b64: imagesB64,
                     })
                 });
                 const data = await res.json();
@@ -793,7 +875,15 @@ try {
         <div class="question-card">
             <div class="q-eyebrow">Question ${no} of ${total}</div>
             <span class="q-type-badge ${q.type}">${typeLabels[q.type] || q.type}</span>
+            <span class="q-marks-badge">${q.marks != null ? q.marks : '—'} marks</span>
             <div class="question-text">${escHtml(q.question)}</div>`;
+
+            // Diagram image, if this question references one of the uploaded images
+            if (q.image_ref !== null && q.image_ref !== undefined && quizData.uploaded_images && quizData.uploaded_images[q.image_ref]) {
+                html += `<div class="question-diagram">
+                <img src="${quizData.uploaded_images[q.image_ref]}" alt="Diagram for this question">
+            </div>`;
+            }
 
             if (q.type === 'mcq' || q.type === 'truefalse') {
                 html += '<div class="mcq-options">';
@@ -811,21 +901,26 @@ try {
             </button>`;
                 }
                 html += '</div>';
+                if (locked) {
+                    html += `<div class="marks-awarded-line">Marks awarded: <strong>${q.awarded_marks != null ? q.awarded_marks : (q.is_correct ? q.marks : 0)} / ${q.marks}</strong></div>`;
+                }
             } else {
-                // Short answer
+                // Theory (short) answer
                 const val = answer || '';
                 html += `<textarea class="short-input" id="shortAnswer" placeholder="Type your answer here…" ${locked ? 'readonly' : ''}
             oninput="answers[${no}]=this.value">${escHtml(val)}</textarea>`;
                 if (locked) {
                     html += `<div style="margin-top:12px;padding:12px 16px;background:#f0fdf4;border-radius:10px;font-size:14px;">
-                <strong style="color:#07a701;">Model answer:</strong> ${escHtml(q.correct)}</div>`;
+                <strong style="color:var(--primary-dark);">Model answer:</strong> ${escHtml(q.correct)}</div>`;
+                    html += `<div class="marks-awarded-line">Marks awarded: <strong>${q.awarded_marks != null ? q.awarded_marks : '—'} / ${q.marks}</strong></div>`;
+                    html += renderBreakdown(q.breakdown);
                 }
             }
 
             // Explanation (show when submitted)
             if (locked && q.explanation) {
                 html += `<div class="explanation-box show">
-            <strong>💡 Explanation:</strong> ${escHtml(q.explanation)}</div>`;
+            <strong><i class="bi bi-lightbulb-fill icon"></i> Explanation:</strong> ${escHtml(q.explanation)}</div>`;
             }
 
             html += '</div>';
@@ -902,6 +997,9 @@ try {
                         q.explanation = r.explanation;
                         q.is_correct = r.is_correct;
                         q.user_answer = r.user_answer;
+                        q.awarded_marks = r.awarded_marks;
+                        q.marks = r.marks != null ? r.marks : q.marks;
+                        q.breakdown = r.breakdown;
                     }
                 });
 
@@ -955,8 +1053,8 @@ try {
 
         function gradeMsg(g) {
             const msgs = {
-                A: 'Excellent work! 🎉',
-                B: 'Good job! Keep it up 👍',
+                A: 'Excellent work! <i class="bi bi-stars icon"></i>',
+                B: 'Good job! Keep it up <i class="bi bi-hand-thumbs-up-fill icon"></i>',
                 C: 'You passed — review your weak areas',
                 D: 'Just passed — more revision needed',
                 F: 'Keep studying — you can do better!'
@@ -966,6 +1064,47 @@ try {
 
         function escHtml(str) {
             return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ── Render the per-item / per-criterion grading breakdown for a theory question ─
+        function renderBreakdown(breakdown) {
+            if (!breakdown || breakdown.format === 'fallback') return '';
+
+            let html = '<div class="breakdown-box">';
+
+            if (breakdown.format === 'list_explain' && Array.isArray(breakdown.items)) {
+                html += '<div class="breakdown-title"><i class="bi bi-clipboard-fill icon"></i> Marking breakdown (per item)</div>';
+                breakdown.items.forEach((it, i) => {
+                    html += `
+                <div class="breakdown-item">
+                    <div class="breakdown-item-head">
+                        <span>${i + 1}. ${escHtml(it.key_point || '')}</span>
+                    </div>
+                    <div class="breakdown-row">
+                        <span class="${it.listed ? 'bd-yes' : 'bd-no'}">${it.listed ? '✓ Listed' : '✗ Not listed'} (${it.list_marks_awarded ?? 0})</span>
+                        <span class="${it.explained ? 'bd-yes' : 'bd-no'}">${it.explained ? '✓ Explained' : '✗ Not explained'} (${it.explain_marks_awarded ?? 0})</span>
+                    </div>
+                    ${it.feedback ? `<div class="breakdown-feedback">${escHtml(it.feedback)}</div>` : ''}
+                </div>`;
+                });
+            } else if (breakdown.format === 'general' && Array.isArray(breakdown.criteria)) {
+                html += '<div class="breakdown-title"><i class="bi bi-clipboard-fill icon"></i> Marking breakdown (per criterion)</div>';
+                breakdown.criteria.forEach(c => {
+                    html += `
+                <div class="breakdown-item">
+                    <div class="breakdown-item-head">
+                        <span>${escHtml(c.description || '')}</span>
+                        <strong>${c.awarded_marks ?? 0} / ${c.max_marks ?? '—'}</strong>
+                    </div>
+                    ${c.feedback ? `<div class="breakdown-feedback">${escHtml(c.feedback)}</div>` : ''}
+                </div>`;
+                });
+            } else {
+                return '';
+            }
+
+            html += '</div>';
+            return html;
         }
     </script>
 </body>

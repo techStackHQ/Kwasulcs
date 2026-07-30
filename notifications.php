@@ -21,6 +21,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_all_read'])) {
     exit();
 }
 
+// Handle clear (delete already-read notifications only; unread stay untouched)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_read'])) {
+    db()->prepare('DELETE FROM web_notifications WHERE user_id = ? AND is_read = 1')
+        ->execute([$user['id']]);
+    header('Location: notifications.php');
+    exit();
+}
+
 // Load all notifications
 $stmt = db()->prepare('
     SELECT wn.*, ce.title AS event_title, ce.start_datetime, ce.end_datetime,
@@ -60,38 +68,38 @@ function time_ago(string $ts): string
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notifications — KWASU LCS</title>
-    <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="stylesheet" href="assets/calendar.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = 'Notifications'; $extraCss = ['assets/calendar.css']; include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
 
     <header class="topbar">
         <div>
-            <div class="eyebrow">KWASU LCS</div>
-            <h1>🔔 Notifications</h1>
+            <div class="eyebrow"><?php echo brand_logo(); ?> KWASU LCS</div>
+            <h1><i class="bi bi-bell-fill icon"></i> Notifications</h1>
             <p class="muted">
                 <?php echo count($unread); ?> unread
                 · <?php echo count($notifications); ?> total
             </p>
         </div>
         <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
             <?php if ($unread): ?>
                 <form method="post" style="display:inline;">
                     <button class="btn secondary" name="mark_all_read" value="1">
-                        ✓ Mark all read
+                        <i class="bi bi-check-lg icon"></i> Mark all read
                     </button>
                 </form>
             <?php endif; ?>
-            <a class="btn secondary" href="calendar.php">📅 Calendar</a>
-            <a class="btn secondary" href="dashboard.php">Dashboard</a>
-            <a class="btn danger" href="logout.php">Logout</a>
+            <?php if ($read): ?>
+                <form method="post" style="display:inline;" onsubmit="return confirm('Clear all read notifications?');">
+                    <button class="btn secondary" name="clear_read" value="1">
+                        <i class="bi bi-trash icon"></i> Clear notifications
+                    </button>
+                </form>
+            <?php endif; ?>
+            <a class="btn secondary btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
         </div>
     </header>
 
@@ -99,11 +107,11 @@ function time_ago(string $ts): string
 
         <?php if (!$notifications): ?>
             <div class="panel" style="padding:40px;text-align:center;">
-                <div style="font-size:48px;margin-bottom:12px;">🔕</div>
+                <div style="font-size:48px;margin-bottom:12px;"><i class="bi bi-bell-slash"></i></div>
                 <h2 style="color:#64748b;font-weight:600;">No notifications yet</h2>
                 <p class="muted">When calendar event reminders fire, they'll appear here.</p>
                 <a class="btn primary" href="calendar.php" style="margin-top:12px;display:inline-flex;">
-                    📅 Go to Calendar
+                    <i class="bi bi-calendar3 icon"></i> Go to Calendar
                 </a>
             </div>
         <?php endif; ?>
@@ -121,12 +129,12 @@ function time_ago(string $ts): string
                     <div class="notif-row notif-row--unread" style="border-left-color:<?php echo $color; ?>;">
                         <div class="notif-icon" style="background:<?php echo $color; ?>18;color:<?php echo $color; ?>;">
                             <?php echo match ($n['event_type'] ?? '') {
-                                'exam'     => '📋',
-                                'test'     => '✏️',
-                                'lecture'  => '🎓',
-                                'tutorial' => '📚',
-                                'personal' => '👤',
-                                default    => '📅',
+                                'exam'     => '<i class="bi bi-clipboard-fill"></i>',
+                                'test'     => '<i class="bi bi-pencil-fill"></i>',
+                                'lecture'  => '<i class="bi bi-mortarboard-fill"></i>',
+                                'tutorial' => '<i class="bi bi-journal-bookmark-fill"></i>',
+                                'personal' => '<i class="bi bi-person-fill"></i>',
+                                default    => '<i class="bi bi-calendar3"></i>',
                             }; ?>
                         </div>
                         <div class="notif-content">
@@ -136,7 +144,7 @@ function time_ago(string $ts): string
                                     <strong><?php echo h($n['event_title']); ?></strong>
                                     · <?php echo date('D d M, g:i A', strtotime($n['start_datetime'])); ?>
                                     <?php if ($n['location']): ?>
-                                        · 📍 <?php echo h($n['location']); ?>
+                                        · <i class="bi bi-geo-alt-fill icon"></i> <?php echo h($n['location']); ?>
                                     <?php endif; ?>
                                 </div>
                             <?php endif; ?>
@@ -170,7 +178,7 @@ function time_ago(string $ts): string
                 ?>
                     <div class="notif-row" style="border-left-color:<?php echo $color; ?>55;opacity:.75;">
                         <div class="notif-icon" style="background:#f1f5f9;color:#94a3b8;">
-                            🔕
+                            <i class="bi bi-bell-slash"></i>
                         </div>
                         <div class="notif-content">
                             <div class="notif-message" style="color:#64748b;"><?php echo h($n['message']); ?></div>

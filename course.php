@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_login();
+ensure_topic_overview_column();
+ensure_announcements_table();
 
 $user     = current_user();
 $courseId = (int) ($_GET['id'] ?? 0);
@@ -90,16 +92,49 @@ if ($sections) {
     }
 }
 
-// ── Course calendar events (upcoming, max 5) ──────────────────────────────────
-$calStmt = db()->prepare("
-    SELECT * FROM calendar_events
-    WHERE (scope = 'course' AND course_id = ?)
-       OR scope = 'global'
-    ORDER BY start_datetime ASC
-    LIMIT 10
-");
-$calStmt->execute([$courseId]);
-$courseCalEvents = $calStmt->fetchAll();
+$progress = course_progress_for($user, $topics, $videosByTopic, $progressMap, $docsByTopic);
+
+// ── Last-updated + (staff only) enrolled-student count for the stats card ────
+$courseStats  = course_content_stats([$courseId]);
+$lastUpdated  = $courseStats[$courseId]['updated_at'] ?? null;
+$enrolledCount = 0;
+if ($isStaff) {
+    $encStmt = db()->prepare('SELECT COUNT(*) FROM enrollments WHERE course_id = ?');
+    $encStmt->execute([$courseId]);
+    $enrolledCount = (int) $encStmt->fetchColumn();
+}
+
+// ── Section resources, split into the Tutorial Videos / Resources tabs ───────
+// (the existing tutorial_update/exam_update upload flow in admin.php already
+// produces exactly this content — just re-presented as two flat lists here
+// instead of one combined "Tutorial and Exam Updates" panel).
+$tutorialVideos = [];
+$resourceDocs   = [];
+if ($sections) {
+    $sectionIds = array_column($sections, 'id');
+    $in         = implode(',', array_fill(0, count($sectionIds), '?'));
+    $srStmt     = db()->prepare("SELECT * FROM section_resources WHERE section_id IN ($in) ORDER BY id DESC");
+    $srStmt->execute($sectionIds);
+    foreach ($srStmt->fetchAll() as $res) {
+        if ($res['resource_type'] === 'video' && $res['embed_url']) {
+            $tutorialVideos[] = $res;
+        } elseif ($res['resource_type'] === 'document' && $res['file_path']) {
+            $resourceDocs[] = $res;
+        }
+    }
+}
+
+// ── Announcements ──────────────────────────────────────────────────────────
+$annStmt = db()->prepare('
+    SELECT a.*, u.full_name AS author_name
+    FROM course_announcements a
+    JOIN users u ON u.id = a.created_by
+    WHERE a.course_id = ?
+    ORDER BY a.created_at DESC
+    LIMIT 20
+');
+$annStmt->execute([$courseId]);
+$announcements = $annStmt->fetchAll();
 
 function section_label(string $type): string
 {
@@ -110,15 +145,12 @@ function section_label(string $type): string
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo h($course['code']); ?> - <?php echo h($course['title']); ?></title>
-    <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
-    <link rel="stylesheet" href="assets/style.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = $course['code'] . ' - ' . $course['title']; $extraCss = ['assets/course.css']; include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
     <header class="topbar">
         <div>
             <div class="eyebrow">Course</div>
@@ -126,13 +158,11 @@ function section_label(string $type): string
             <p class="muted"><?php echo strtoupper(h($course['semester'])); ?> • Lecturer: <?php echo h($course['lecturer_name']); ?></p>
         </div>
         <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
             <?php if ($registered || $isStaff): ?>
-                <a class="btn primary" href="quiz.php?course=<?php echo (int) $courseId; ?>">🎯 Take Quiz</a>
+                <a class="btn glass" href="quiz.php?course=<?php echo (int) $courseId; ?>"><i class="bi bi-bullseye icon"></i> Take Quiz</a>
             <?php endif; ?>
-            <a class="btn secondary" href="calendar.php?course=<?php echo (int) $courseId; ?>">📅 Course Calendar</a>
-            <a class="btn secondary" href="dashboard.php">Back</a>
-            <a class="btn danger" href="logout.php">Logout</a>
+            <a class="btn glass" href="calendar.php?course=<?php echo (int) $courseId; ?>"><i class="bi bi-calendar3 icon"></i> Course Calendar</a>
+            <a class="btn glass btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
         </div>
     </header>
 
@@ -168,139 +198,484 @@ function section_label(string $type): string
             </section>
         <?php endif; ?>
 
-        <section class="stack">
-            <div class="panel">
+        <?php if ($topics): ?>
+            <div class="course-progress-card">
+                <div class="course-stat">
+                    <span class="course-stat-value course-stat-value--pct" style="--pct:<?php echo $progress['percent']; ?>"><?php echo $progress['percent']; ?>%</span>
+                    <span class="course-stat-label">Progress</span>
+                </div>
+                <div class="course-stat-sep"></div>
+                <?php if ($progress['is_staff_view']): ?>
+                    <div class="course-stat">
+                        <span class="course-stat-value"><?php echo $progress['completed_weeks']; ?> / <?php echo $progress['total_weeks']; ?></span>
+                        <span class="course-stat-label">Weeks With Content</span>
+                    </div>
+                    <div class="course-stat-sep"></div>
+                    <div class="course-stat">
+                        <span class="course-stat-value"><?php echo $enrolledCount; ?></span>
+                        <span class="course-stat-label">Enrolled Students</span>
+                    </div>
+                <?php else: ?>
+                    <div class="course-stat">
+                        <span class="course-stat-value"><?php echo $progress['completed_weeks']; ?> / <?php echo $progress['total_weeks']; ?></span>
+                        <span class="course-stat-label">Completed Weeks</span>
+                    </div>
+                    <div class="course-stat-sep"></div>
+                    <div class="course-stat">
+                        <span class="course-stat-value">Week <?php echo $progress['current_week']; ?></span>
+                        <span class="course-stat-label">Current Week</span>
+                    </div>
+                <?php endif; ?>
+                <div class="course-stat-sep"></div>
+                <div class="course-stat">
+                    <span class="course-stat-value"><?php echo $lastUpdated ? h(content_time_ago($lastUpdated)) : 'No content yet'; ?></span>
+                    <span class="course-stat-label">Last Updated</span>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($_GET['announced'])): ?>
+            <div class="alert success">Announcement posted.</div>
+        <?php endif; ?>
+
+        <div class="course-detail-layout">
+            <!-- ══ LEFT: Weekly Topics accordion ══════════════════════════════════ -->
+            <div class="panel weekly-topics-panel">
                 <h2>Weekly Topics</h2>
                 <?php if (!$topics): ?>
-                    <p class="muted">No week topics have been uploaded yet.</p>
+                    <div class="course-empty-state">
+                        <i class="bi bi-calendar2-week"></i>
+                        <p>No weekly materials yet.</p>
+                        <span class="muted">Your lecturer hasn't published any weeks for this course.</span>
+                    </div>
                 <?php endif; ?>
 
-                <?php foreach ($topics as $topic): ?>
-                    <?php
-                    $isBookmarked = isset($bookmarkMap[(int) $topic['id']]);
-                    $topicVideos  = $videosByTopic[(int) $topic['id']] ?? [];
-                    $topicDocs    = $docsByTopic[(int) $topic['id']] ?? [];
+                <div class="accordion" id="weeklyAccordion">
+                    <?php foreach ($topics as $wi => $topic):
+                        $tid          = (int) $topic['id'];
+                        $isBookmarked = isset($bookmarkMap[$tid]);
+                        $topicVideos  = $videosByTopic[$tid] ?? [];
+                        $topicDocs    = $docsByTopic[$tid] ?? [];
+                        $hasContent   = $topicVideos || $topicDocs;
+                        $isOpen       = $wi === 0;
+
+                        $videosJson = json_encode(array_map(fn($v) => [
+                            'id'      => (int) $v['id'],
+                            'title'   => $v['title'],
+                            'embed'   => $v['embed_url'],
+                            'watched' => !empty($progressMap[(int) $v['id']]),
+                        ], $topicVideos));
                     ?>
-                    <article class="topic-card">
-                        <div class="topic-head">
-                            <div>
-                                <div class="eyebrow">Week <?php echo (int) $topic['week_number']; ?></div>
-                                <h3><?php echo h($topic['title']); ?></h3>
-                            </div>
-                            <?php if ($isStudent && $registered): ?>
-                                <form method="post" action="bookmark.php">
-                                    <input type="hidden" name="topic_id" value="<?php echo (int) $topic['id']; ?>">
-                                    <input type="hidden" name="course_id" value="<?php echo (int) $courseId; ?>">
-                                    <button class="btn tiny <?php echo $isBookmarked ? 'secondary' : 'primary'; ?>" type="submit">
-                                        <?php echo $isBookmarked ? '★ Bookmarked' : '☆ Bookmark'; ?>
-                                    </button>
-                                </form>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="resource-columns">
-                            <div>
-                                <h4>Videos</h4>
-                                <?php if (!$topicVideos): ?>
-                                    <p class="muted">No videos yet.</p>
+                        <div class="accordion-item<?php echo $isOpen ? ' open' : ''; ?>">
+                            <button type="button" class="accordion-header" aria-expanded="<?php echo $isOpen ? 'true' : 'false'; ?>">
+                                <span class="accordion-week-num"><?php echo (int) $topic['week_number']; ?></span>
+                                <span class="accordion-title-wrap">
+                                    <span class="accordion-eyebrow">WEEK <?php echo (int) $topic['week_number']; ?></span>
+                                    <span class="accordion-title"><?php echo h($topic['title']); ?></span>
+                                </span>
+                                <?php if ($isStudent && $registered): ?>
+                                    <span class="accordion-bookmark-btn" data-topic-id="<?php echo $tid; ?>" title="<?php echo $isBookmarked ? 'Bookmarked' : 'Bookmark this week'; ?>">
+                                        <i class="bi <?php echo $isBookmarked ? 'bi-star-fill' : 'bi-star'; ?>"></i>
+                                    </span>
                                 <?php endif; ?>
-                                <?php foreach ($topicVideos as $video): ?>
-                                    <?php $watched = isset($progressMap[(int) $video['id']]) && (int) $progressMap[(int) $video['id']] === 1; ?>
-                                    <div class="resource-item">
-                                        <div class="resource-item-head">
-                                            <strong><?php echo h($video['title']); ?></strong>
-                                            <?php if ($isStudent && $registered): ?>
-                                                <form method="post" action="progress.php">
-                                                    <input type="hidden" name="course_id" value="<?php echo (int) $courseId; ?>">
-                                                    <input type="hidden" name="video_id" value="<?php echo (int) $video['id']; ?>">
-                                                    <button class="btn tiny <?php echo $watched ? 'secondary' : 'primary'; ?>" type="submit" name="watched" value="1">
-                                                        <?php echo $watched ? '✓ Watched' : 'Mark Watched'; ?>
-                                                    </button>
-                                                </form>
-                                            <?php endif; ?>
-                                        </div>
-                                        <div class="video-wrap">
-                                            <iframe src="<?php echo h($video['embed_url']); ?>" title="<?php echo h($video['title']); ?>" allowfullscreen></iframe>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-
-                            <div>
-                                <h4>Documents</h4>
-                                <?php if (!$topicDocs): ?>
-                                    <p class="muted">No documents yet.</p>
+                                <i class="bi bi-chevron-down accordion-chevron"></i>
+                            </button>
+                            <div class="accordion-panel" <?php echo $isOpen ? '' : 'hidden'; ?> data-week-videos='<?php echo h($videosJson); ?>'>
+                                <?php if (!empty($topic['overview'])): ?>
+                                    <p class="accordion-overview"><?php echo h($topic['overview']); ?></p>
                                 <?php endif; ?>
-                                <?php foreach ($topicDocs as $doc): ?>
-                                    <div class="resource-item file-item">
-                                        <div>
-                                            <strong><?php echo h($doc['title']); ?></strong>
-                                            <div class="muted"><?php echo strtoupper(h($doc['file_type'])); ?></div>
-                                        </div>
-                                        <?php if ($registered || $isStaff): ?>
-                                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                                                <a class="btn tiny primary" href="download.php?type=document&id=<?php echo (int)$doc['id']; ?>&view=1" target="_blank">📄 Open</a>
-                                                <a class="btn tiny secondary" href="download.php?type=document&id=<?php echo (int)$doc['id']; ?>">⬇ Download</a>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </article>
-                <?php endforeach; ?>
-            </div>
 
-            <div class="panel">
-                <h2>Tutorial and Exam Updates</h2>
-
-                <?php if (!$sections): ?>
-                    <p class="muted">No tutorial or exam sections have been uploaded yet.</p>
-                <?php endif; ?>
-
-                <?php foreach ($sections as $section): ?>
-                    <?php $resources = $sectionResources[(int) $section['id']] ?? []; ?>
-                    <div class="special-box">
-                        <div class="topic-head">
-                            <div>
-                                <div class="eyebrow"><?php echo h(section_label($section['section_type'])); ?></div>
-                                <h3><?php echo h($section['title']); ?></h3>
-                            </div>
-                        </div>
-
-                        <?php if (!$resources): ?>
-                            <p class="muted">No items uploaded yet.</p>
-                        <?php endif; ?>
-
-                        <?php foreach ($resources as $res): ?>
-                            <div class="resource-item">
-                                <div class="resource-item-head">
-                                    <strong><?php echo h($res['title']); ?></strong>
-                                    <?php if ($res['resource_type'] === 'document' && $res['file_path']): ?>
-                                        <?php if ($registered || $isStaff): ?>
-                                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                                                <a class="btn tiny primary" href="download.php?type=section&id=<?php echo (int)$res['id']; ?>&view=1" target="_blank">📄 Open</a>
-                                                <a class="btn tiny secondary" href="download.php?type=section&id=<?php echo (int)$res['id']; ?>">⬇ Download</a>
-                                            </div>
+                                <div class="week-columns">
+                                    <div class="week-col">
+                                        <div class="week-col-head"><i class="bi bi-play-circle-fill"></i> Videos (<?php echo count($topicVideos); ?>)</div>
+                                        <?php if (!$topicVideos): ?>
+                                            <p class="muted week-col-empty">No videos yet.</p>
                                         <?php else: ?>
-                                            <span class="badge warn">🔒 Enrolled students only</span>
+                                            <?php foreach (array_slice($topicVideos, 0, 4) as $video): ?>
+                                                <button type="button" class="video-list-item" data-embed="<?php echo h($video['embed_url']); ?>" data-title="<?php echo h($video['title']); ?>" data-video-id="<?php echo (int) $video['id']; ?>">
+                                                    <i class="bi bi-play-circle-fill"></i>
+                                                    <span class="video-list-item-title"><?php echo h($video['title']); ?></span>
+                                                    <?php if ($isStudent && $registered && !empty($progressMap[(int) $video['id']])): ?>
+                                                        <i class="bi bi-check-circle-fill video-watched-tick" title="Watched"></i>
+                                                    <?php endif; ?>
+                                                </button>
+                                            <?php endforeach; ?>
+                                            <?php if (count($topicVideos) > 4): ?>
+                                                <button type="button" class="view-all-link view-all-videos-btn">View all videos <i class="bi bi-arrow-right"></i></button>
+                                            <?php endif; ?>
                                         <?php endif; ?>
-                                    <?php elseif ($res['resource_type'] === 'video' && $res['embed_url']): ?>
-                                        <span class="badge ok">Video</span>
+                                    </div>
+
+                                    <div class="week-col">
+                                        <div class="week-col-head"><i class="bi bi-file-earmark-text-fill"></i> Documents (<?php echo count($topicDocs); ?>)</div>
+                                        <?php if (!$topicDocs): ?>
+                                            <p class="muted week-col-empty">No documents yet.</p>
+                                        <?php elseif (!($registered || $isStaff)): ?>
+                                            <p class="muted week-col-empty"><i class="bi bi-lock-fill"></i> Enrolled students only</p>
+                                        <?php else: ?>
+                                            <?php foreach (array_slice($topicDocs, 0, 4) as $doc): ?>
+                                                <div class="doc-list-row">
+                                                    <?php echo course_render_document(
+                                                        'download.php?type=document&id=' . (int) $doc['id'] . '&view=1',
+                                                        $doc['title'],
+                                                        $doc['file_type'],
+                                                        'download.php?type=document&id=' . (int) $doc['id'] . '&stream=1'
+                                                    ); ?>
+                                                    <a class="doc-download-btn" href="download.php?type=document&id=<?php echo (int) $doc['id']; ?>" title="Download"><i class="bi bi-download"></i></a>
+                                                </div>
+                                            <?php endforeach; ?>
+                                            <?php if (count($topicDocs) > 4): ?>
+                                                <button type="button" class="view-all-link view-all-docs-btn">View all documents <i class="bi bi-arrow-right"></i></button>
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <?php if ($hasContent && ($registered || $isStaff)): ?>
+                                        <div class="week-col week-quiz-col">
+                                            <div class="week-col-head"><i class="bi bi-award-fill"></i> Quiz</div>
+                                            <div class="week-quiz-card">
+                                                <div class="week-quiz-icon"><i class="bi bi-clipboard-check-fill"></i></div>
+                                                <strong>Weekly Quiz <?php echo (int) $topic['week_number']; ?></strong>
+                                                <span class="muted">AI-generated practice quiz</span>
+                                                <button type="button" class="btn primary tiny week-quiz-btn" data-week="<?php echo (int) $topic['week_number']; ?>">Take Quiz <i class="bi bi-arrow-right"></i></button>
+                                            </div>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
 
-                                <?php if ($res['resource_type'] === 'video' && $res['embed_url']): ?>
-                                    <div class="video-wrap">
-                                        <iframe src="<?php echo h($res['embed_url']); ?>" title="<?php echo h($res['title']); ?>" allowfullscreen></iframe>
+                                <!-- Hidden document list for the "View all documents" modal (docs beyond the first 4 aren't otherwise in the DOM). -->
+                                <div class="week-all-docs" hidden>
+                                    <?php foreach ($topicDocs as $doc): ?>
+                                        <div class="doc-list-row">
+                                            <?php echo course_render_document(
+                                                'download.php?type=document&id=' . (int) $doc['id'] . '&view=1',
+                                                $doc['title'],
+                                                $doc['file_type'],
+                                                'download.php?type=document&id=' . (int) $doc['id'] . '&stream=1'
+                                            ); ?>
+                                            <a class="doc-download-btn" href="download.php?type=document&id=<?php echo (int) $doc['id']; ?>" title="Download"><i class="bi bi-download"></i></a>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- ══ RIGHT: Announcements & Tutorials ═══════════════════════════════ -->
+            <div class="panel announcements-panel">
+                <h2>Announcements &amp; Tutorials</h2>
+                <div class="ann-tabs" role="tablist">
+                    <button type="button" class="ann-tab active" data-tab="announcements">Announcements</button>
+                    <button type="button" class="ann-tab" data-tab="tutorials">Tutorial Videos</button>
+                    <button type="button" class="ann-tab" data-tab="resources">Resources</button>
+                </div>
+
+                <!-- ── Announcements tab ──────────────────────────────────────────── -->
+                <div class="ann-tab-panel" data-panel="announcements">
+                    <?php if ($isStaff): ?>
+                        <button type="button" class="ann-new-btn" id="annNewBtn"><i class="bi bi-plus-lg"></i> New Announcement</button>
+                        <form method="post" action="announcement_post.php" class="ann-new-form" id="annNewForm" hidden>
+                            <input type="hidden" name="course_id" value="<?php echo $courseId; ?>">
+                            <input type="text" name="title" placeholder="Announcement title" required maxlength="200">
+                            <textarea name="body" rows="3" placeholder="Write the announcement…" required></textarea>
+                            <div class="ann-new-form-actions">
+                                <button type="button" class="btn tiny secondary" id="annCancelBtn">Cancel</button>
+                                <button type="submit" class="btn tiny primary">Post</button>
+                            </div>
+                        </form>
+                    <?php endif; ?>
+
+                    <?php if (!$announcements): ?>
+                        <div class="course-empty-state">
+                            <i class="bi bi-megaphone"></i>
+                            <p>No announcements have been posted yet.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="ann-list">
+                            <?php foreach (array_slice($announcements, 0, 5) as $ann): ?>
+                                <div class="ann-item">
+                                    <span class="ann-item-icon"><i class="bi bi-megaphone-fill"></i></span>
+                                    <div class="ann-item-body">
+                                        <strong><?php echo h($ann['title']); ?></strong>
+                                        <p><?php echo h(mb_strimwidth($ann['body'], 0, 120, '…')); ?></p>
+                                        <span class="ann-item-time"><?php echo h(content_time_ago($ann['created_at'])); ?></span>
                                     </div>
-                                <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php if (count($announcements) > 5): ?>
+                            <button type="button" class="view-all-link view-all-ann-btn">View all announcements <i class="bi bi-arrow-right"></i></button>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+
+                <!-- ── Tutorial Videos tab ────────────────────────────────────────── -->
+                <div class="ann-tab-panel" data-panel="tutorials" hidden>
+                    <?php if (!$tutorialVideos): ?>
+                        <div class="course-empty-state">
+                            <i class="bi bi-camera-reels"></i>
+                            <p>No tutorial videos available.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach (array_slice($tutorialVideos, 0, 4) as $tv):
+                            $ytId = youtube_id((string) $tv['original_url']);
+                        ?>
+                            <button type="button" class="tutorial-video-item video-list-item" data-embed="<?php echo h($tv['embed_url']); ?>" data-title="<?php echo h($tv['title']); ?>">
+                                <span class="tutorial-video-thumb">
+                                    <?php if ($ytId): ?>
+                                        <img src="https://img.youtube.com/vi/<?php echo h($ytId); ?>/mqdefault.jpg" alt="" loading="lazy">
+                                    <?php endif; ?>
+                                    <i class="bi bi-play-circle-fill"></i>
+                                </span>
+                                <span class="tutorial-video-info">
+                                    <strong><?php echo h($tv['title']); ?></strong>
+                                    <span class="muted"><?php echo h(content_time_ago($tv['created_at'])); ?></span>
+                                </span>
+                            </button>
+                        <?php endforeach; ?>
+                        <?php if (count($tutorialVideos) > 4): ?>
+                            <button type="button" class="view-all-link view-all-tutorials-btn">View all tutorial videos <i class="bi bi-arrow-right"></i></button>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+
+                <!-- ── Resources tab ──────────────────────────────────────────────── -->
+                <div class="ann-tab-panel" data-panel="resources" hidden>
+                    <?php if (!$resourceDocs): ?>
+                        <div class="course-empty-state">
+                            <i class="bi bi-folder2-open"></i>
+                            <p>No resources uploaded.</p>
+                        </div>
+                    <?php elseif (!($registered || $isStaff)): ?>
+                        <div class="course-empty-state">
+                            <i class="bi bi-lock-fill"></i>
+                            <p>Enrolled students only.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($resourceDocs as $res): ?>
+                            <div class="doc-list-row">
+                                <?php echo course_render_document(
+                                    'download.php?type=section&id=' . (int) $res['id'] . '&view=1',
+                                    $res['title'],
+                                    $res['file_type'],
+                                    'download.php?type=section&id=' . (int) $res['id'] . '&stream=1'
+                                ); ?>
+                                <a class="doc-download-btn" href="download.php?type=section&id=<?php echo (int) $res['id']; ?>" title="Download"><i class="bi bi-download"></i></a>
                             </div>
                         <?php endforeach; ?>
-                    </div>
-                <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
             </div>
-        </section>
+        </div>
+
+        <!-- ══ Video player modal ══════════════════════════════════════════════ -->
+        <div class="media-modal-overlay" id="videoPlayerModal" hidden>
+            <div class="media-modal video-modal">
+                <div class="media-modal-head">
+                    <strong id="videoPlayerTitle"></strong>
+                    <div class="media-modal-actions">
+                        <button type="button" class="media-modal-btn" id="videoCloseBtn" title="Close"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+                <div class="video-modal-body">
+                    <!-- allowfullscreen + the allow list below give the embedded
+                         YouTube player its own native fullscreen control — no
+                         custom "theatre mode" button needed on top of it. -->
+                    <iframe id="videoPlayerFrame" src="" title="Lecture video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ "View all" list modal (videos / documents / announcements / tutorials) ═ -->
+        <div class="media-modal-overlay" id="listModal" hidden>
+            <div class="media-modal list-modal">
+                <div class="media-modal-head">
+                    <strong id="listModalTitle"></strong>
+                    <div class="media-modal-actions">
+                        <button type="button" class="media-modal-btn" id="listModalCloseBtn" title="Close"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+                <div class="list-modal-body" id="listModalBody"></div>
+            </div>
+        </div>
+
+        <script>
+            (function () {
+                const COURSE_ID = <?php echo (int) $courseId; ?>;
+                const IS_STUDENT = <?php echo $isStudent ? 'true' : 'false'; ?>;
+                const REGISTERED = <?php echo $registered ? 'true' : 'false'; ?>;
+
+                // ── Accordion ────────────────────────────────────────────────────────
+                document.querySelectorAll('.accordion-header').forEach(function (header) {
+                    header.addEventListener('click', function () {
+                        const item = header.closest('.accordion-item');
+                        const panel = item.querySelector('.accordion-panel');
+                        const wasOpen = item.classList.contains('open');
+                        document.querySelectorAll('.accordion-item.open').forEach(function (openItem) {
+                            openItem.classList.remove('open');
+                            openItem.querySelector('.accordion-header').setAttribute('aria-expanded', 'false');
+                            openItem.querySelector('.accordion-panel').hidden = true;
+                        });
+                        if (!wasOpen) {
+                            item.classList.add('open');
+                            header.setAttribute('aria-expanded', 'true');
+                            panel.hidden = false;
+                        }
+                    });
+                });
+
+                // ── Bookmark toggle (AJAX, no page reload) ──────────────────────────
+                document.querySelectorAll('.accordion-bookmark-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        const fd = new FormData();
+                        fd.append('topic_id', btn.dataset.topicId);
+                        fd.append('course_id', COURSE_ID);
+                        fd.append('ajax', '1');
+                        fetch('bookmark.php', { method: 'POST', body: fd }).catch(() => {});
+                        const icon = btn.querySelector('i');
+                        const nowBookmarked = icon.classList.contains('bi-star');
+                        icon.classList.toggle('bi-star', !nowBookmarked);
+                        icon.classList.toggle('bi-star-fill', nowBookmarked);
+                        btn.title = nowBookmarked ? 'Bookmarked' : 'Bookmark this week';
+                    });
+                });
+
+                // ── Video player modal ───────────────────────────────────────────────
+                const videoModal = document.getElementById('videoPlayerModal');
+                const videoFrame = document.getElementById('videoPlayerFrame');
+                const videoTitle = document.getElementById('videoPlayerTitle');
+                let lastScrollY = 0;
+
+                function openVideo(embed, title, videoId) {
+                    lastScrollY = window.scrollY;
+                    videoFrame.src = embed + (embed.includes('?') ? '&' : '?') + 'autoplay=1';
+                    videoTitle.textContent = title;
+                    videoModal.hidden = false;
+                    document.body.classList.add('drawer-open');
+                    if (IS_STUDENT && REGISTERED && videoId) {
+                        const fd = new FormData();
+                        fd.append('course_id', COURSE_ID);
+                        fd.append('video_id', videoId);
+                        fd.append('watched', '1');
+                        fetch('progress.php', { method: 'POST', body: fd }).catch(() => {});
+                    }
+                }
+
+                function closeVideo() {
+                    videoFrame.src = '';
+                    videoModal.hidden = true;
+                    document.body.classList.remove('drawer-open');
+                    window.scrollTo({ top: lastScrollY });
+                }
+
+                document.addEventListener('click', function (e) {
+                    const item = e.target.closest('.video-list-item');
+                    if (!item || !item.dataset.embed) return;
+                    openVideo(item.dataset.embed, item.dataset.title || '', item.dataset.videoId);
+                });
+                document.getElementById('videoCloseBtn').addEventListener('click', closeVideo);
+                videoModal.addEventListener('click', function (e) {
+                    if (e.target === videoModal) closeVideo();
+                });
+
+                // ── "View all" list modal ────────────────────────────────────────────
+                const listModal = document.getElementById('listModal');
+                const listModalTitle = document.getElementById('listModalTitle');
+                const listModalBody = document.getElementById('listModalBody');
+
+                function openListModal(title, html) {
+                    listModalTitle.textContent = title;
+                    listModalBody.innerHTML = html;
+                    listModal.hidden = false;
+                    document.body.classList.add('drawer-open');
+                }
+                function closeListModal() {
+                    listModal.hidden = true;
+                    document.body.classList.remove('drawer-open');
+                }
+                document.getElementById('listModalCloseBtn').addEventListener('click', closeListModal);
+                listModal.addEventListener('click', function (e) {
+                    if (e.target === listModal) closeListModal();
+                });
+
+                function escHtml(str) {
+                    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                }
+
+                document.querySelectorAll('.view-all-videos-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const panel = btn.closest('.accordion-panel');
+                        const videos = JSON.parse(panel.dataset.weekVideos || '[]');
+                        const html = videos.map(function (v) {
+                            return '<button type="button" class="video-list-item" data-embed="' + escHtml(v.embed) + '" data-title="' + escHtml(v.title) + '" data-video-id="' + v.id + '">'
+                                + '<i class="bi bi-play-circle-fill"></i><span class="video-list-item-title">' + escHtml(v.title) + '</span>'
+                                + (v.watched ? '<i class="bi bi-check-circle-fill video-watched-tick" title="Watched"></i>' : '')
+                                + '</button>';
+                        }).join('');
+                        openListModal('All Videos', html || '<p class="muted">No videos yet.</p>');
+                    });
+                });
+
+                document.querySelectorAll('.view-all-docs-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const panel = btn.closest('.accordion-panel');
+                        const allDocs = panel.querySelector('.week-all-docs');
+                        openListModal('All Documents', allDocs ? allDocs.innerHTML : '<p class="muted">No documents yet.</p>');
+                    });
+                });
+
+                const annViewAllBtn = document.querySelector('.view-all-ann-btn');
+                if (annViewAllBtn) {
+                    annViewAllBtn.addEventListener('click', function () {
+                        window.location.href = 'notifications.php';
+                    });
+                }
+
+                // ── Announcements & Tutorials tabs ───────────────────────────────────
+                document.querySelectorAll('.ann-tab').forEach(function (tab) {
+                    tab.addEventListener('click', function () {
+                        document.querySelectorAll('.ann-tab').forEach(t => t.classList.remove('active'));
+                        document.querySelectorAll('.ann-tab-panel').forEach(p => p.hidden = true);
+                        tab.classList.add('active');
+                        document.querySelector('.ann-tab-panel[data-panel="' + tab.dataset.tab + '"]').hidden = false;
+                    });
+                });
+
+                // ── New announcement inline form (staff only) ────────────────────────
+                const annNewBtn = document.getElementById('annNewBtn');
+                const annNewForm = document.getElementById('annNewForm');
+                const annCancelBtn = document.getElementById('annCancelBtn');
+                if (annNewBtn) {
+                    annNewBtn.addEventListener('click', function () {
+                        annNewForm.hidden = false;
+                        annNewBtn.hidden = true;
+                    });
+                }
+                if (annCancelBtn) {
+                    annCancelBtn.addEventListener('click', function () {
+                        annNewForm.hidden = true;
+                        annNewBtn.hidden = false;
+                    });
+                }
+
+                // ── Per-week "Take Quiz" — reuses the existing quiz modal/generator
+                // untouched: pre-select its scope dropdown, then trigger its own
+                // start button so none of that logic needs duplicating here. ────────
+                document.addEventListener('click', function (e) {
+                    const quizBtn = e.target.closest('.week-quiz-btn');
+                    if (!quizBtn) return;
+                    const scopeSel = document.getElementById('quiz-scope');
+                    const overlay = document.getElementById('quiz-overlay');
+                    const startBtn = document.getElementById('quiz-start-btn');
+                    if (scopeSel) scopeSel.value = 'week_' + quizBtn.dataset.week;
+                    if (overlay) overlay.classList.remove('hidden');
+                    if (startBtn) startBtn.click();
+                });
+            })();
+        </script>
     </main>
     <!-- ══ QUIZ MODAL ════════════════════════════════════════════════════════════ -->
     <style>
@@ -508,7 +883,7 @@ function section_label(string $type): string
             font-size: 32px;
             font-weight: 900;
             border: 6px solid #07a701;
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
         #quiz-score-label {
@@ -574,7 +949,7 @@ function section_label(string $type): string
         <div id="quiz-box">
             <div id="quiz-header">
                 <div>
-                    <h2>📝 Quiz Generator</h2>
+                    <h2><i class="bi bi-pencil-fill icon"></i> Quiz Generator</h2>
                     <p id="quiz-header-sub"><?php echo h($course['code']); ?> — <?php echo h($course['title']); ?></p>
                 </div>
                 <button id="quiz-close">✕</button>
@@ -796,16 +1171,16 @@ function section_label(string $type): string
                 circle.style.borderColor = pct >= 70 ? '#07a701' : pct >= 50 ? '#f59e0b' : '#dc2626';
                 circle.style.color = pct >= 70 ? '#07a701' : pct >= 50 ? '#f59e0b' : '#dc2626';
 
-                const msgs = pct === 100 ? '🏆 Perfect score!' :
-                    pct >= 80 ? '🎉 Excellent work!' :
-                    pct >= 60 ? '👍 Good effort!' :
-                    pct >= 40 ? '📚 Keep studying!' : '💪 Don\'t give up!';
-                document.getElementById('quiz-score-msg').textContent = msgs;
+                const msgs = pct === 100 ? '<i class="bi bi-trophy-fill icon"></i> Perfect score!' :
+                    pct >= 80 ? '<i class="bi bi-stars icon"></i> Excellent work!' :
+                    pct >= 60 ? '<i class="bi bi-hand-thumbs-up-fill icon"></i> Good effort!' :
+                    pct >= 40 ? '<i class="bi bi-journal-bookmark-fill icon"></i> Keep studying!' : '<i class="bi bi-lightning-charge-fill icon"></i> Don\'t give up!';
+                document.getElementById('quiz-score-msg').innerHTML = msgs;
 
                 const review = document.getElementById('quiz-review');
                 review.innerHTML = '';
                 if (wrongOnes.length === 0) {
-                    review.innerHTML = '<p style="color:#16a34a;font-weight:600;">You got everything right! 🎯</p>';
+                    review.innerHTML = '<p style="color:#16a34a;font-weight:600;"><i class="bi bi-bullseye icon"></i> You got everything right!</p>';
                 } else {
                     wrongOnes.forEach(({
                         q,
@@ -815,9 +1190,9 @@ function section_label(string $type): string
                         review.innerHTML += `
                     <div class="quiz-review-item">
                         <div class="quiz-review-q">${escHtml(q.question)}</div>
-                        <div class="quiz-review-ans fail">❌ Your answer: ${escHtml(chosen)}</div>
-                        <div class="quiz-review-ans ok">✅ Correct: ${escHtml(correctOpt || q.answer)}</div>
-                        ${q.explanation ? `<div class="quiz-review-ans" style="background:#f8fafc;color:#475569;">💡 ${escHtml(q.explanation)}</div>` : ''}
+                        <div class="quiz-review-ans fail"><i class="bi bi-x-circle-fill icon"></i> Your answer: ${escHtml(chosen)}</div>
+                        <div class="quiz-review-ans ok"><i class="bi bi-check-circle-fill icon"></i> Correct: ${escHtml(correctOpt || q.answer)}</div>
+                        ${q.explanation ? `<div class="quiz-review-ans" style="background:#f8fafc;color:#475569;"><i class="bi bi-lightbulb-fill icon"></i> ${escHtml(q.explanation)}</div>` : ''}
                     </div>`;
                     });
                 }
@@ -848,7 +1223,11 @@ function section_label(string $type): string
             width: 58px;
             height: 58px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #07a701, #059669);
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
             border: none;
             cursor: pointer;
@@ -863,6 +1242,24 @@ function section_label(string $type): string
         #ai-fab:hover {
             transform: scale(1.08);
             box-shadow: 0 10px 32px rgba(7, 167, 1, .5);
+        }
+
+        /* course.php's own AI fab sits in the same corner as the global
+           feedback-fab (partials/nav.php) — push feedback up above it here
+           so the two floating buttons don't overlap on this page only. */
+        .feedback-fab {
+            bottom: 100px;
+        }
+        @media (max-width: 768px) {
+            #ai-fab {
+                bottom: 84px;
+            }
+            #ai-panel {
+                bottom: 156px;
+            }
+            .feedback-fab {
+                bottom: 156px;
+            }
         }
 
         #ai-panel {
@@ -969,7 +1366,11 @@ function section_label(string $type): string
         #ai-new-chat-btn {
             font-size: 12px;
             font-weight: 700;
-            background: #07a701;
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
             border: none;
             border-radius: 8px;
@@ -1038,7 +1439,7 @@ function section_label(string $type): string
         }
 
         .ai-session-rename:hover {
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
         /* ── Messages area ───────────────────────────────────────────────────────── */
@@ -1180,11 +1581,15 @@ function section_label(string $type): string
 
         #ai-attach-btn:hover {
             background: #e2e8f0;
-            color: #07a701;
+            color: var(--primary-dark);
         }
 
         #ai-send-btn {
-            background: #07a701;
+            background-color: #07a701;
+            background-image: url('assets/images/buttons/primary-btn-bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             color: #fff;
             border: none;
             width: 40px;
@@ -1193,12 +1598,15 @@ function section_label(string $type): string
             cursor: pointer;
             font-size: 18px;
             flex-shrink: 0;
-            transition: background .15s;
+            transition: background-color .15s;
             align-self: flex-end;
         }
 
         #ai-send-btn:hover {
-            background: #059669;
+            /* background-color only (not the "background" shorthand) so the
+               button keeps its background-image on hover — same pattern as
+               .btn.primary:hover in style.css. */
+            background-color: #059669;
         }
 
         #ai-send-btn:disabled {
@@ -1207,16 +1615,16 @@ function section_label(string $type): string
         }
     </style>
 
-    <button id="ai-fab" title="Ask AI about this course" aria-label="Open AI assistant">🤖</button>
+    <button id="ai-fab" title="Ask AI about this course" aria-label="Open AI assistant"><i class="bi bi-robot"></i></button>
 
     <div id="ai-panel" class="hidden">
         <div id="ai-panel-header">
             <div>
-                <h3>🤖 Course Assistant</h3>
+                <h3><i class="bi bi-robot icon"></i> Course Assistant</h3>
                 <p id="ai-session-label"><?php echo h($course['code']); ?> — Ask me anything</p>
             </div>
             <div class="ai-header-btns">
-                <button class="ai-icon-btn" id="ai-history-btn" title="Chat history">🕐</button>
+                <button class="ai-icon-btn" id="ai-history-btn" title="Chat history"><i class="bi bi-clock-fill"></i></button>
                 <button class="ai-icon-btn" id="ai-close-btn" aria-label="Close">✕</button>
             </div>
         </div>
@@ -1238,11 +1646,11 @@ function section_label(string $type): string
             <div id="ai-attachment-preview"></div>
             <!-- Bottom row: attach + textarea + send -->
             <div id="ai-input-bottom">
-                <button id="ai-attach-btn" title="Attach image or document">📎</button>
+                <button id="ai-attach-btn" title="Attach image or document"><i class="bi bi-paperclip"></i></button>
                 <input type="file" id="ai-file-input" style="display:none"
                     accept="image/*,.pdf,.doc,.docx,.txt">
                 <textarea id="ai-input" placeholder="Ask a question about this course…" rows="1"></textarea>
-                <button id="ai-send-btn" title="Send">➤</button>
+                <button id="ai-send-btn" title="Send"><i class="bi bi-send-fill"></i></button>
             </div>
         </div>
     </div>
@@ -1321,11 +1729,11 @@ function section_label(string $type): string
             function docIcon(name) {
                 const ext = (name.split('.').pop() || '').toLowerCase();
                 return {
-                    pdf: '📄',
-                    doc: '📝',
-                    docx: '📝',
-                    txt: '📃'
-                } [ext] || '📁';
+                    pdf: '<i class="bi bi-file-earmark-pdf-fill"></i>',
+                    doc: '<i class="bi bi-file-earmark-word-fill"></i>',
+                    docx: '<i class="bi bi-file-earmark-word-fill"></i>',
+                    txt: '<i class="bi bi-file-earmark-text-fill"></i>'
+                } [ext] || '<i class="bi bi-file-earmark-fill"></i>';
             }
 
             // ── Open/close panel ──────────────────────────────────────────────────────
@@ -1358,7 +1766,7 @@ function section_label(string $type): string
                 messages.innerHTML = '';
                 sessionLabel.textContent = `${<?php echo json_encode($course['code']); ?>} — Ask me anything`;
                 if (isFirst) {
-                    addMessage(`Hi ${FIRST_NAME}! 👋 I'm your AI assistant for <strong><?php echo h($course['code']); ?> — <?php echo h($course['title']); ?></strong>. Ask me about the topics, documents, or anything in this course. I can also read the actual uploaded materials!`, 'bot');
+                    addMessage(`Hi ${FIRST_NAME}! I'm your AI assistant for <strong><?php echo h($course['code']); ?> — <?php echo h($course['title']); ?></strong>. Ask me about the topics, documents, or anything in this course. I can also read the actual uploaded materials!`, 'bot');
                 } else {
                     addMessage('New chat started! What would you like to know?', 'bot');
                 }
@@ -1398,8 +1806,8 @@ function section_label(string $type): string
                     div.innerHTML = `
                 <span class="ai-session-title" title="${escHtml(s.title)}">${escHtml(s.title)}</span>
                 <div style="display:flex;gap:2px;flex-shrink:0;">
-                    <button class="ai-session-rename" data-id="${s.id}" data-title="${escHtml(s.title)}" title="Rename">✏️</button>
-                    <button class="ai-session-del" data-id="${s.id}" title="Delete">🗑</button>
+                    <button class="ai-session-rename" data-id="${s.id}" data-title="${escHtml(s.title)}" title="Rename"><i class="bi bi-pencil-fill"></i></button>
+                    <button class="ai-session-del" data-id="${s.id}" title="Delete"><i class="bi bi-trash"></i></button>
                 </div>`;
 
                     // Click to load session

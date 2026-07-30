@@ -16,8 +16,8 @@
 }
 
 .course-manage-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--panel);
+    border: 1px solid var(--line);
     border-radius: 18px;
     padding: 18px;
     box-shadow: 0 4px 14px rgba(15, 23, 42, .05);
@@ -94,7 +94,11 @@
 
 /* ── "Now Managing" course banner (course-centric content view) ───────────── */
 .active-course-banner {
-    background: linear-gradient(135deg, #07a701, #059669);
+    background-color: #07a701;
+    background-image: url('images/backgrounds/header-bg.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     color: #fff;
     border-radius: 16px;
     padding: 16px 22px;
@@ -117,8 +121,8 @@
 
 /* ── Course info bar (sits above the tabs when managing a course) ─────────── */
 .course-info-bar {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--panel);
+    border: 1px solid var(--line);
     border-radius: 16px;
     padding: 14px 20px;
     margin-bottom: 16px;
@@ -139,7 +143,7 @@
 
 .course-info-meta .course-code {
     font-weight: 900;
-    color: #07a701;
+    color: var(--primary-dark);
 }
 
 /* ── Tabs (Weekly Topics / Tutorial-Exam Sections) ─────────────────────────── */
@@ -148,7 +152,7 @@
     gap: 8px;
     flex-wrap: wrap;
     margin-bottom: 18px;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--line);
     padding-bottom: 0;
 }
 
@@ -158,7 +162,7 @@
     font-weight: 700;
     font-size: 14px;
     text-decoration: none;
-    color: #64748b;
+    color: var(--muted);
     background: transparent;
     border: 1px solid transparent;
     border-bottom: none;
@@ -166,22 +170,22 @@
 }
 
 .admin-tab-link:hover {
-    background: #f8fafc;
-    color: #0f172a;
+    background: var(--soft);
+    color: var(--text);
 }
 
 .admin-tab-link.active {
-    background: #fff;
-    color: #07a701;
-    border-color: #e2e8f0;
+    background: var(--panel);
+    color: var(--primary-dark);
+    border-color: var(--line);
     border-bottom: 2px solid #07a701;
     margin-bottom: -1px;
 }
 
 /* ── Topic management cards (inside Weekly Topics tab) ─────────────────────── */
 .topic-manage-card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--panel);
+    border: 1px solid var(--line);
     border-radius: 16px;
     padding: 18px;
     margin-bottom: 16px;
@@ -196,7 +200,7 @@
     flex-wrap: wrap;
     margin-bottom: 12px;
     padding-bottom: 12px;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line);
 }
 
 /* ── Individual video/document rows inside a topic card ────────────────────── */
@@ -207,7 +211,7 @@
     gap: 10px;
     padding: 10px 12px;
     border-radius: 12px;
-    background: #f8fafc;
+    background: var(--soft);
     margin-bottom: 8px;
 }
 
@@ -219,7 +223,7 @@
 .admin-empty-state {
     text-align: center;
     padding: 48px 24px;
-    color: #64748b;
+    color: var(--muted);
 }
 
 .admin-empty-state .icon {

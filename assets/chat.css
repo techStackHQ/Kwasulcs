@@ -1,0 +1,1018 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KWASU LCS — chat.css
+   Dedicated visual language for the chat subsystem (chat.php, chat_group.php,
+   chat_dm.php, chat_ai.php). Intentionally diverges from the site's default
+   green design system: purple = your own messages, blue = everyone else's —
+   closer to a modern messaging/tutoring app than the rest of the portal.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Chat list (chat.php) ──────────────────────────────────────────────────── */
+.chat-avatar--ai {
+    background: linear-gradient(135deg, #7b93f0, #7c3aed);
+    color: #fff;
+}
+
+/* ── chat_ai.php: still uses the flat .chat-msg layout (1:1 with the AI, no
+   avatars/names needed) — reskin its bubbles to the same palette. ────────── */
+.chat-messages > .chat-msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, .12);
+}
+
+.chat-messages > .chat-msg.me {
+    align-self: flex-end;
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    border-bottom-right-radius: 5px;
+}
+
+.chat-messages > .chat-msg.bot {
+    align-self: flex-start;
+    background: linear-gradient(135deg, #7b93f0, #5468d6);
+    border-bottom-left-radius: 5px;
+}
+
+.chat-messages > .chat-msg.thinking {
+    opacity: .7;
+    font-style: italic;
+}
+
+/* ── Message rows: avatar + bubble column ─────────────────────────────────── */
+/* :not([hidden]) rather than a plain .chat-msg-row selector — otherwise this
+   author `display:flex` ties in specificity with the UA [hidden]{display:none}
+   rule and (author beats UA on a tie) wins, so `row.hidden = true` from the
+   in-thread search filter would silently fail to actually hide the row. */
+.chat-msg-row:not([hidden]) {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    max-width: 100%;
+}
+
+.chat-msg-row.me {
+    justify-content: flex-end;
+}
+
+.chat-msg-row.them {
+    justify-content: flex-start;
+}
+
+.chat-avatar-msg {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, .18);
+}
+
+a.chat-avatar-msg:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+.chat-bubble-col {
+    display: flex;
+    flex-direction: column;
+    max-width: 74%;
+    min-width: 0;
+}
+
+.chat-msg-row.me .chat-bubble-col {
+    align-items: flex-end;
+}
+
+.chat-msg-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 2px 4px;
+    font-size: 12.5px;
+}
+
+.chat-msg-name-row a {
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.chat-msg-name-row a:hover {
+    text-decoration: underline;
+}
+
+.chat-role-pill {
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+.chat-role-pill.lecturer {
+    background: rgba(139, 92, 246, .16);
+    color: #7c3aed;
+}
+
+.chat-role-pill.admin {
+    background: rgba(100, 116, 139, .16);
+    color: #475569;
+}
+
+[data-theme="dark"] .chat-role-pill.lecturer {
+    background: rgba(167, 139, 250, .2);
+    color: #c4b5fd;
+}
+
+[data-theme="dark"] .chat-role-pill.admin {
+    background: rgba(148, 163, 184, .2);
+    color: #cbd5e1;
+}
+
+/* ── Bubbles ───────────────────────────────────────────────────────────────── */
+.chat-bubble {
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, .12);
+    word-break: break-word;
+}
+
+.chat-bubble.me {
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    border-bottom-right-radius: 5px;
+}
+
+.chat-bubble.them {
+    background: linear-gradient(135deg, #7b93f0, #5468d6);
+    border-bottom-left-radius: 5px;
+}
+
+.chat-bubble.thinking {
+    opacity: .7;
+    font-style: italic;
+}
+
+.chat-bubble .chat-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .18);
+    color: #fff;
+    font-size: 12.5px;
+    text-decoration: none;
+}
+
+.chat-bubble .chat-attachment:hover {
+    background: rgba(255, 255, 255, .28);
+}
+
+/* ── Input row / attach button restyle ────────────────────────────────────── */
+.chat-attach-btn {
+    background: rgba(124, 58, 237, .1);
+    color: #7c3aed;
+}
+
+[data-theme="dark"] .chat-attach-btn {
+    background: rgba(167, 139, 250, .18);
+    color: #c4b5fd;
+}
+
+.chat-input-row .btn.primary {
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+}
+
+/* ── Group chat header: Members button ────────────────────────────────────── */
+.chat-members-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ── Members modal (WhatsApp-style participant list) ──────────────────────── */
+.chat-members-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(15, 23, 42, .5);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.chat-members-modal.open {
+    display: flex;
+}
+
+.chat-members-inner {
+    position: relative;
+    width: min(440px, 100%);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border-radius: 22px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .3);
+    overflow: hidden;
+}
+
+.chat-members-head {
+    background: linear-gradient(135deg, #7b93f0, #7c3aed);
+    color: #fff;
+    padding: 18px 22px;
+    flex-shrink: 0;
+}
+
+.chat-members-head h3 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.chat-members-head p {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    opacity: .85;
+}
+
+.chat-members-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: rgba(255, 255, 255, .18);
+    border: none;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-members-close:hover {
+    background: rgba(255, 255, 255, .3);
+}
+
+.chat-members-list {
+    overflow-y: auto;
+    padding: 6px 10px;
+}
+
+.chat-member-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px;
+    border-radius: 14px;
+    text-decoration: none;
+    color: var(--text);
+}
+
+.chat-member-row:hover {
+    background: var(--soft);
+}
+
+.chat-member-row.self {
+    cursor: default;
+}
+
+.chat-member-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.chat-member-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-member-info strong {
+    display: block;
+    font-size: 14px;
+}
+
+.chat-member-info span {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Premium chat redesign — chat.php landing page, chat_group.php/chat_dm.php/
+   chat_ai.php thread views. Reuses the app's existing design tokens
+   (--panel/--line/--muted/--text/--soft/--shadow-*) so light/dark mode keep
+   working automatically; the purple/blue message palette above is untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Premium hero (chat.php only) ─────────────────────────────────────────── */
+/* Same background treatment as every other page's .topbar (background-color
+   + images/backgrounds/header-bg.png) — only the shape changes here: an
+   inset rounded 28px card instead of edge-to-edge. */
+.chat-hero {
+    width: min(1280px, 100%);
+    margin: 16px auto 0;
+    border-radius: 28px;
+    padding: 30px 34px;
+}
+
+/* ── AI Assistant card ─────────────────────────────────────────────────────── */
+.chat-ai-card {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow .15s, transform .15s;
+}
+
+.chat-ai-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.chat-ai-card-icon {
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    background: rgba(124, 58, 237, .12);
+    color: #7c3aed;
+}
+
+[data-theme="dark"] .chat-ai-card-icon {
+    background: rgba(167, 139, 250, .18);
+    color: #c4b5fd;
+}
+
+.chat-ai-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-ai-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 16px;
+}
+
+.chat-ai-card-info p {
+    margin: 4px 0 0;
+    font-size: 13.5px;
+}
+
+.chat-badge-new {
+    background: rgba(124, 58, 237, .14);
+    color: #7c3aed;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: 3px 8px;
+    border-radius: 999px;
+}
+
+[data-theme="dark"] .chat-badge-new {
+    background: rgba(167, 139, 250, .2);
+    color: #c4b5fd;
+}
+
+.chat-ai-card-btn {
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+/* ── Course Groups search + rows (chat.php) ───────────────────────────────── */
+.chat-groups-panel .panel-head {
+    margin-bottom: 12px;
+}
+
+.panel-subtitle {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+}
+
+.chat-search-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0 12px;
+    margin-bottom: 6px;
+    height: 44px;
+}
+
+.chat-search-input i {
+    color: var(--muted);
+    font-size: 14px;
+}
+
+.chat-search-input input {
+    flex: 1;
+    border: none;
+    background: none;
+    height: 100%;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.chat-search-input input:focus {
+    outline: none;
+}
+
+.chat-no-results {
+    padding: 16px 4px;
+    font-size: 13.5px;
+    text-align: center;
+}
+
+/* Upgraded list row: 76-82px, generous padding, hover lift, unread glow.
+   Used for Course Groups / Direct Messages on chat.php AND the compact
+   conversations sidebar reuses its own smaller variant below. */
+.chat-list-row:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 76px;
+    padding: 12px 10px;
+    border-top: 1px solid var(--line);
+    border-radius: 14px;
+    text-decoration: none;
+    color: inherit;
+    transition: background .15s, box-shadow .15s;
+}
+
+.chat-list-row:first-child {
+    border-top: none;
+}
+
+.chat-list-row:hover {
+    background: var(--soft);
+}
+
+.chat-list-row.has-unread,
+a.chat-list-row:has(.notif-badge) {
+    box-shadow: inset 3px 0 0 0 var(--primary);
+}
+
+.chat-list-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.chat-list-time {
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* ── Compact conversations sidebar (chat_group.php/chat_dm.php/chat_ai.php) ── */
+.chat-page {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+}
+
+.chat-page .chat-thread-panel {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-conversations {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 240px);
+    min-height: 420px;
+    overflow: hidden;
+}
+
+.chat-conversations-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 10px;
+    flex-shrink: 0;
+}
+
+.chat-conversations-head h2 {
+    margin: 0;
+    font-size: 15px;
+}
+
+.chat-conversations-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px;
+}
+
+.chat-conv-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 8px;
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    transition: background .15s;
+}
+
+.chat-conv-row:hover {
+    background: var(--soft);
+}
+
+.chat-conv-row.active {
+    background: rgba(7, 167, 1, .1);
+}
+
+.chat-conv-row .chat-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 12.5px;
+}
+
+.chat-conv-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-conv-info strong {
+    display: block;
+    font-size: 13.5px;
+}
+
+.chat-conv-info p {
+    margin: 1px 0 0;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-conv-meta {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.chat-conv-time {
+    font-size: 10.5px;
+    color: var(--muted);
+}
+
+.chat-new-dm-btn {
+    margin: 10px;
+    justify-content: center;
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+
+/* ── Compact thread header (chat_group.php/chat_dm.php/chat_ai.php) ──────── */
+.chat-thread-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 72px;
+    padding: 0 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+}
+
+.chat-thread-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    font-size: 15px;
+}
+
+.chat-thread-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-thread-info strong {
+    display: block;
+    font-size: 15.5px;
+}
+
+.chat-thread-info p {
+    margin: 1px 0 0;
+    font-size: 12.5px;
+}
+
+.chat-thread-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.chat-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: var(--soft);
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: background .15s;
+}
+
+.chat-icon-btn:hover {
+    background: var(--line);
+}
+
+.chat-thread-search:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+}
+
+.chat-thread-search i {
+    color: var(--muted);
+}
+
+.chat-thread-search input {
+    flex: 1;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text);
+    height: 32px;
+}
+
+.chat-thread-search input:focus {
+    outline: none;
+}
+
+/* ── Date separators ───────────────────────────────────────────────────────── */
+.chat-date-sep {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 6px 0;
+}
+
+.chat-date-sep span {
+    background: var(--soft);
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 4px 14px;
+    border-radius: 999px;
+}
+
+/* ── Message timestamps + read receipts ───────────────────────────────────── */
+.chat-msg-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 3px 4px 0;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.chat-msg-row.me .chat-msg-meta {
+    justify-content: flex-end;
+}
+
+.chat-receipt {
+    display: inline-flex;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.chat-receipt.read {
+    color: #22c55e;
+}
+
+/* ── Edit / delete own messages ───────────────────────────────────────────── */
+.chat-msg-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+
+.chat-msg-row.me:hover .chat-msg-actions,
+.chat-msg-row.me:focus-within .chat-msg-actions {
+    opacity: 1;
+}
+
+.chat-msg-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.chat-msg-action-btn:hover {
+    background: var(--soft);
+    color: var(--text);
+}
+
+.chat-msg-delete-btn:hover {
+    color: var(--danger);
+}
+
+.chat-bubble-deleted {
+    font-style: italic;
+    opacity: .7;
+    background: var(--soft) !important;
+    color: var(--muted) !important;
+}
+
+.chat-edit-textarea {
+    width: 100%;
+    min-width: 220px;
+    min-height: 44px;
+    resize: vertical;
+    border: 1px solid rgba(255, 255, 255, .4);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .12);
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+    padding: 8px 10px;
+}
+
+.chat-edit-textarea:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, .7);
+}
+
+.chat-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+/* ── Attachment preview cards ──────────────────────────────────────────────── */
+.chat-attachment-image {
+    display: block;
+    margin-top: 6px;
+    max-width: 240px;
+    border-radius: 12px;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.chat-attachment-image img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    display: block;
+}
+
+.chat-attachment-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .18);
+    color: #fff;
+    text-decoration: none;
+    max-width: 260px;
+}
+
+.chat-attachment-file:hover {
+    background: rgba(255, 255, 255, .28);
+}
+
+.chat-attachment-file-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.chat-attachment-file-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.chat-attachment-file-info strong {
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-attachment-file-info .muted {
+    font-size: 11px;
+    color: rgba(255, 255, 255, .75) !important;
+}
+
+.chat-attachment-audio-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.chat-attachment-audio-wrap audio {
+    height: 32px;
+    max-width: 220px;
+}
+
+/* ── Emoji picker ──────────────────────────────────────────────────────────── */
+.chat-emoji-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* :not([hidden]) — see the .chat-msg-row comment above; same cascade-tie
+   issue would otherwise leave this permanently visible from page load. */
+.chat-emoji-picker:not([hidden]) {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    z-index: 30;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+.chat-emoji-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 8px 8px 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+}
+
+.chat-emoji-tab {
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    font-size: 17px;
+    line-height: 1;
+    padding: 6px 8px 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    opacity: .55;
+}
+
+.chat-emoji-tab:hover {
+    opacity: .85;
+}
+
+.chat-emoji-tab.active {
+    opacity: 1;
+    border-bottom-color: var(--primary);
+}
+
+.chat-emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    padding: 10px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.chat-emoji-option {
+    border: none;
+    background: none;
+    font-size: 19px;
+    line-height: 1;
+    padding: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.chat-emoji-option:hover {
+    background: var(--soft);
+}
+
+/* ── Voice notes ───────────────────────────────────────────────────────────── */
+.chat-voice-btn {
+    background: rgba(124, 58, 237, .1);
+    color: #7c3aed;
+}
+
+[data-theme="dark"] .chat-voice-btn {
+    background: rgba(167, 139, 250, .18);
+    color: #c4b5fd;
+}
+
+.chat-recording-bar:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 4px;
+    font-size: 13.5px;
+}
+
+.chat-recording-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #dc2626;
+    animation: chat-recording-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes chat-recording-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .4; transform: scale(.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-recording-dot { animation: none; }
+}
+
+/* ── Responsive: sidebar collapses before the thread panel gets cramped ──── */
+@media (max-width: 1000px) {
+    .chat-conversations {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .chat-hero {
+        padding: 22px 20px;
+        border-radius: 20px;
+    }
+
+    .chat-ai-card {
+        flex-wrap: wrap;
+    }
+
+    .chat-thread-header {
+        padding: 0 14px;
+        gap: 10px;
+    }
+
+    .chat-thread-search {
+        padding: 8px 14px;
+    }
+}

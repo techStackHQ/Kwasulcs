@@ -16,7 +16,8 @@ try {
             SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_email, cn.sent_web,
                    ce.title AS event_title, ce.start_datetime, ce.location,
                    ce.notify_email AS ev_notify_email, ce.notify_web AS ev_notify_web,
-                   u.email AS user_email, u.full_name AS user_name
+                   u.email AS user_email, u.full_name AS user_name,
+                   u.pref_email_notifications, u.pref_web_notifications
             FROM calendar_notifications cn
             JOIN calendar_events ce ON ce.id = cn.event_id
             JOIN users u ON u.id = cn.user_id
@@ -31,7 +32,7 @@ try {
             // notification firing more than once if two requests (open tabs,
             // overlapping page loads, the background poll, etc.) hit this
             // block within the same brief window.
-            if (!$cr['sent_web'] && $cr['ev_notify_web']) {
+            if (!$cr['sent_web'] && $cr['ev_notify_web'] && $cr['pref_web_notifications']) {
                 $claimWeb2 = db()->prepare('UPDATE calendar_notifications SET sent_web=1 WHERE id=? AND sent_web=0');
                 $claimWeb2->execute([$cr['notif_id']]);
                 if ($claimWeb2->rowCount() > 0) {
@@ -39,7 +40,7 @@ try {
                     db()->prepare('INSERT IGNORE INTO web_notifications (user_id, event_id, message) VALUES (?,?,?)')->execute([$cr['user_id'], $cr['event_id'], $msg2]);
                 }
             }
-            if (!$cr['sent_email'] && $cr['ev_notify_email'] && $cr['user_email']) {
+            if (!$cr['sent_email'] && $cr['ev_notify_email'] && $cr['user_email'] && $cr['pref_email_notifications']) {
                 $claimEmail2 = db()->prepare('UPDATE calendar_notifications SET sent_email=1 WHERE id=? AND sent_email=0');
                 $claimEmail2->execute([$cr['notif_id']]);
                 if ($claimEmail2->rowCount() > 0) {
@@ -57,41 +58,27 @@ try {
 }
 
 
-if ($role === 'student') {
-    $coursesStmt = db()->query('
-        SELECT c.*, u.full_name AS lecturer_name
-        FROM courses c
-        JOIN users u ON u.id = c.lecturer_id
-        ORDER BY c.semester, c.code
-    ');
-    $courses = $coursesStmt->fetchAll();
-} elseif ($role === 'lecturer') {
-    $stmt = db()->prepare('
-        SELECT c.*, u.full_name AS lecturer_name
-        FROM courses c
-        JOIN users u ON u.id = c.lecturer_id
-        WHERE c.lecturer_id = ?
-        ORDER BY c.semester, c.code
-    ');
-    $stmt->execute([$user['id']]);
-    $courses = $stmt->fetchAll();
-} else {
-    $courses = db()->query('
-        SELECT c.*, u.full_name AS lecturer_name
-        FROM courses c
-        JOIN users u ON u.id = c.lecturer_id
-        ORDER BY c.semester, c.code
-    ')->fetchAll();
-}
+$allCourses = courses_for_user($user);
 
 $enrolled = [];
 if ($role === 'student') {
-    $stmt = db()->prepare('SELECT course_id FROM enrollments WHERE student_id = ?');
-    $stmt->execute([$user['id']]);
-    $enrolled = array_flip(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)));
+    $enrolled = enrolled_course_ids((int) $user['id']);
 }
 
 $enrolledCount = count($enrolled);
+
+// Homepage course slider: students see only their registered courses (quick
+// access, takes less space); lecturer/admin already see just their relevant
+// set from courses_for_user(), so no further filtering needed.
+$courses = ($role === 'student')
+    ? array_values(array_filter($allCourses, fn($c) => isset($enrolled[(int) $c['id']])))
+    : $allCourses;
+
+// Computed against the FULL list (before the student filter above) so a
+// course keeps the same pattern/color here and on courses.php regardless of
+// which subset actually renders — nth-of-type alone can't guarantee that
+// once filtering skips courses ahead of it in the canonical order.
+$coursePatterns = course_pattern_map($allCourses);
 
 // ── Unread notification count (bell badge) ────────────────────────────────────
 $unreadCount = 0;
@@ -103,52 +90,7 @@ try {
 }
 
 // ── Upcoming events for this user (next 5) ────────────────────────────────────
-$upcomingEvents = [];
-try {
-    if ($role === 'admin') {
-        $evStmt = db()->prepare("
-            SELECT e.*, c.code AS course_code
-            FROM calendar_events e
-            LEFT JOIN courses c ON c.id = e.course_id
-            WHERE e.start_datetime >= NOW()
-            ORDER BY e.start_datetime ASC LIMIT 5
-        ");
-        $evStmt->execute();
-    } elseif ($role === 'lecturer') {
-        $evStmt = db()->prepare("
-            SELECT e.*, c.code AS course_code
-            FROM calendar_events e
-            LEFT JOIN courses c ON c.id = e.course_id
-            WHERE e.start_datetime >= NOW()
-              AND (e.scope = 'global'
-                OR (e.scope = 'course' AND c.lecturer_id = ?)
-                OR (e.scope = 'personal' AND e.created_by = ?))
-            ORDER BY e.start_datetime ASC LIMIT 5
-        ");
-        $evStmt->execute([$user['id'], $user['id']]);
-    } else {
-        $evStmt = db()->prepare("
-            SELECT e.*, c.code AS course_code
-            FROM calendar_events e
-            LEFT JOIN courses c ON c.id = e.course_id
-            LEFT JOIN enrollments en ON en.course_id = e.course_id AND en.student_id = ?
-            WHERE e.start_datetime >= NOW()
-              AND (e.scope = 'global'
-                OR (e.scope = 'course' AND en.student_id IS NOT NULL)
-                OR (e.scope = 'personal' AND e.created_by = ?))
-            ORDER BY e.start_datetime ASC LIMIT 5
-        ");
-        $evStmt->execute([$user['id'], $user['id']]);
-    }
-    $upcomingEvents = $evStmt->fetchAll();
-} catch (\Throwable $e) { /* calendar tables may not exist yet */
-}
-
-function course_status(array $course, array $enrolled): string
-{
-    if (isset($enrolled[(int)$course['id']])) return 'Registered';
-    return 'Open';
-}
+$upcomingEvents = upcoming_events_for($user, 5);
 
 $typeColors = [
     'lecture'  => '#2563eb',
@@ -163,43 +105,18 @@ $typeColors = [
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KWASU LCS — Dashboard</title>
-    <script>
-        (function() {
-            var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme:dark)').matches)) document.documentElement.setAttribute('data-theme', 'dark')
-        })();
-    </script>
-    <link rel="stylesheet" href="assets/style.css">
-    <link rel="stylesheet" href="assets/calendar.css">
-    <script src="assets/theme.js" defer></script>
+    <?php $pageTitle = 'Dashboard'; $extraCss = ['assets/calendar.css']; include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
+    <?php include __DIR__ . '/partials/nav.php'; ?>
+    <?php include __DIR__ . '/partials/appheader.php'; ?>
 
     <header class="topbar">
         <div>
-            <div class="eyebrow">KWASU LCS</div>
+            <div class="eyebrow"><?php echo brand_logo(); ?> KWASU LCS</div>
             <h1>Welcome, <?php echo h($user['full_name']); ?></h1>
             <p class="muted"><?php echo h(ucfirst($role)); ?> portal</p>
-        </div>
-        <div class="topbar-actions">
-            <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-            <!-- 🔔 Bell with unread badge -->
-            <a class="btn secondary notif-bell-btn" href="notifications.php"
-                title="<?php echo $unreadCount > 0 ? $unreadCount . ' unread notifications' : 'Notifications'; ?>">
-                🔔
-                <?php if ($unreadCount > 0): ?>
-                    <span class="notif-badge"><?php echo $unreadCount; ?></span>
-                <?php endif; ?>
-            </a>
-            <a class="btn secondary" href="calendar.php">📅 Calendar</a>
-            <?php if ($role !== 'student'): ?>
-                <a class="btn secondary" href="admin.php">Manage Content</a>
-            <?php endif; ?>
-            <a class="btn danger" href="logout.php">Logout</a>
         </div>
     </header>
 
@@ -250,36 +167,37 @@ $typeColors = [
                         <h2>Courses</h2>
                         <p class="muted">
                             <?php if ($role === 'student'): ?>
-                                Click a course to register and access its content.
+                                Your running subjects.
                             <?php elseif ($role === 'lecturer'): ?>
                                 Courses assigned to you.
                             <?php else: ?>
                                 All courses in the system.
                             <?php endif; ?>
                         </p>
+                        <a class="btn tiny secondary" href="courses.php">View all</a>
                     </div>
-                    <section class="course-grid" style="margin-top:14px;">
-                        <?php foreach ($courses as $course):
-                            $status = $role === 'student'
-                                ? course_status($course, $enrolled)
-                                : 'Registered';
-                            $meta = strtoupper($course['semester']) . ' • ' . h($course['code']) . ' • ' . h($course['lecturer_name']);
-                        ?>
-                            <a class="course-card" href="course.php?id=<?php echo (int)$course['id']; ?>">
-                                <div class="course-head">
-                                    <span class="course-code"><?php echo h($course['code']); ?></span>
-                                    <span class="badge">
-                                        <?php echo h($status); ?>
-                                    </span>
-                                </div>
-                                <h3><?php echo h($course['title']); ?></h3>
-                                <p class="muted"><?php echo $meta; ?></p>
-                            </a>
-                        <?php endforeach; ?>
-                        <?php if (!$courses): ?>
-                            <p class="muted" style="padding:16px 0;">No courses yet.</p>
+                    <div class="course-slider-wrap">
+                        <?php if (count($courses) > 2): ?>
+                            <button type="button" class="slider-arrow slider-arrow--left" onclick="document.getElementById('courseSlider').scrollBy({left:-260,behavior:'smooth'})" aria-label="Scroll left">‹</button>
                         <?php endif; ?>
-                    </section>
+                        <section class="course-slider" id="courseSlider">
+                            <?php foreach ($courses as $course): ?>
+                                <a class="course-card" href="course.php?id=<?php echo (int)$course['id']; ?>" data-pattern="<?php echo $coursePatterns[(int) $course['id']] ?? 1; ?>" style="--course-color:<?php echo h($course['color'] ?: '#2563eb'); ?>;">
+                                    <span class="course-code"><?php echo h($course['code']); ?></span>
+                                    <h3><?php echo h($course['title']); ?></h3>
+                                </a>
+                            <?php endforeach; ?>
+                            <?php if (!$courses): ?>
+                                <p class="muted" style="padding:16px 0;">
+                                    <?php echo $role === 'student' ? 'No registered courses yet — ' : 'No courses yet.'; ?>
+                                    <?php if ($role === 'student'): ?><a href="courses.php" style="color:var(--primary-dark);">browse courses →</a><?php endif; ?>
+                                </p>
+                            <?php endif; ?>
+                        </section>
+                        <?php if (count($courses) > 2): ?>
+                            <button type="button" class="slider-arrow slider-arrow--right" onclick="document.getElementById('courseSlider').scrollBy({left:260,behavior:'smooth'})" aria-label="Scroll right">›</button>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
 
@@ -288,23 +206,29 @@ $typeColors = [
 
                 <!-- Upcoming events -->
                 <div class="panel">
-                    <div class="panel-head">
-                        <h2>Upcoming Events</h2>
-                        <a class="btn tiny secondary" href="calendar.php">View all</a>
+                    <div class="panel-head panel-head--dash">
+                        <div class="panel-head-icon">
+                            <span class="panel-icon"><i class="bi bi-calendar3"></i></span>
+                            <div>
+                                <h2>Upcoming Events</h2>
+                                <p class="muted panel-subtitle">Don't miss what's coming up.</p>
+                            </div>
+                        </div>
+                        <a class="btn tiny secondary pill-cta" href="calendar.php">View calendar <i class="bi bi-chevron-right"></i></a>
                     </div>
                     <?php if (!$upcomingEvents): ?>
                         <p class="muted" style="padding:12px 0;font-size:14px;">
                             No upcoming events.
-                            <a href="calendar.php" style="color:#07a701;">Add one →</a>
+                            <a href="calendar.php" style="color:var(--primary-dark);">Add one →</a>
                         </p>
                     <?php endif; ?>
                     <?php foreach ($upcomingEvents as $ev):
                         $color = $typeColors[$ev['event_type']] ?? '#64748b';
                     ?>
                         <a class="dash-event-row" href="calendar.php" style="border-left-color:<?php echo $color; ?>;">
-                            <div class="dash-event-date">
-                                <span class="udate-day"><?php echo date('d', strtotime($ev['start_datetime'])); ?></span>
-                                <span class="udate-mon"><?php echo date('M', strtotime($ev['start_datetime'])); ?></span>
+                            <div class="dash-event-date" style="background:<?php echo $color; ?>18;">
+                                <span class="udate-day" style="color:<?php echo $color; ?>;"><?php echo date('d', strtotime($ev['start_datetime'])); ?></span>
+                                <span class="udate-mon" style="color:<?php echo $color; ?>;"><?php echo date('M', strtotime($ev['start_datetime'])); ?></span>
                             </div>
                             <div class="dash-event-info">
                                 <strong><?php echo h($ev['title']); ?></strong>
@@ -339,14 +263,20 @@ $typeColors = [
                 }
                 ?>
                 <div class="panel">
-                    <div class="panel-head">
-                        <h2>
-                            Notifications
-                            <?php if ($unreadCount > 0): ?>
-                                <span class="notif-badge" style="margin-left:6px;"><?php echo $unreadCount; ?></span>
-                            <?php endif; ?>
-                        </h2>
-                        <a class="btn tiny secondary" href="notifications.php">View all</a>
+                    <div class="panel-head panel-head--dash">
+                        <div class="panel-head-icon">
+                            <span class="panel-icon"><i class="bi bi-bell-fill"></i></span>
+                            <div>
+                                <h2>
+                                    Notifications
+                                    <?php if ($unreadCount > 0): ?>
+                                        <span class="notif-badge" style="margin-left:6px;"><?php echo $unreadCount; ?></span>
+                                    <?php endif; ?>
+                                </h2>
+                                <p class="muted panel-subtitle">Stay updated with important activities.</p>
+                            </div>
+                        </div>
+                        <a class="btn tiny secondary pill-cta" href="notifications.php">View all <i class="bi bi-chevron-right"></i></a>
                     </div>
                     <?php if (!$recentNotifs): ?>
                         <p class="muted" style="padding:12px 0;font-size:14px;">No notifications yet.</p>
@@ -357,8 +287,8 @@ $typeColors = [
                     ?>
                         <div class="dash-notif-row <?php echo $isNew ? 'dash-notif-row--new' : ''; ?>"
                             style="border-left-color:<?php echo $color; ?>;">
-                            <span style="font-size:18px;">
-                                <?php echo $isNew ? '🔔' : '🔕'; ?>
+                            <span class="dash-notif-icon" style="background:<?php echo $color; ?>18;color:<?php echo $color; ?>;">
+                                <i class="bi <?php echo $isNew ? 'bi-bell-fill' : 'bi-bell-slash'; ?>"></i>
                             </span>
                             <div class="dash-event-info">
                                 <div style="font-size:13px;<?php echo $isNew ? 'font-weight:600;' : ''; ?>">

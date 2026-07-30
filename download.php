@@ -509,27 +509,27 @@ if ($inline && !$canInline) {
                     <p class="muted">Word Document · <?php echo $sizeLabel; ?></p>
                 </div>
                 <div class="topbar-actions">
-                    <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-                    <a class="btn secondary" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank">⬇ Download</a>
-                    <a class="btn secondary" href="course.php?id=<?php echo (int)$courseId; ?>">← Back to Course</a>
+                    <a class="btn glass" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank"><i class="bi bi-download icon"></i> Download</a>
+                    <a class="btn glass" href="course.php?id=<?php echo (int)$courseId; ?>">← Back to Course</a>
+                    <button class="theme-toggle" role="switch" onclick="toggleTheme()" title="Dark mode"></button>
                 </div>
             </header>
             <main class="page">
                 <?php if ($hasError): ?>
                     <div class="panel" style="max-width:500px;margin:0 auto;padding:48px 32px;text-align:center;">
-                        <div style="font-size:64px;margin-bottom:16px;">📝</div>
+                        <div style="font-size:64px;margin-bottom:16px;"><i class="bi bi-file-earmark-break-fill"></i></div>
                         <h2>Could not open document</h2>
                         <p class="muted">This file may be password-protected or corrupted.</p>
-                        <a class="btn primary" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank" style="margin-top:16px;">⬇ Download Instead</a>
+                        <a class="btn primary" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank" style="margin-top:16px;"><i class="bi bi-download icon"></i> Download Instead</a>
                     </div>
                 <?php elseif ($docHtml): ?>
                     <div class="doc-body"><?php echo $docHtml; ?></div>
                 <?php else: ?>
                     <div class="panel" style="max-width:500px;margin:0 auto;padding:48px 32px;text-align:center;">
-                        <div style="font-size:64px;margin-bottom:16px;">📄</div>
+                        <div style="font-size:64px;margin-bottom:16px;"><i class="bi bi-file-earmark-fill"></i></div>
                         <h2>Empty document</h2>
                         <p class="muted">This document appears to have no content.</p>
-                        <a class="btn primary" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank" style="margin-top:16px;">⬇ Download Instead</a>
+                        <a class="btn primary" href="download.php?type=<?php echo h($type); ?>&id=<?php echo $id; ?>" target="_blank" style="margin-top:16px;"><i class="bi bi-download icon"></i> Download Instead</a>
                     </div>
                 <?php endif; ?>
             </main>
@@ -541,8 +541,12 @@ if ($inline && !$canInline) {
     }
 
     // ── All other non-viewable types (PPTX, ZIP etc.) ─────────────────────────
-    $iconMap = ['ppt' => '📊', 'pptx' => '📊', 'zip' => '🗜️', 'rar' => '🗜️', 'xls' => '📈', 'xlsx' => '📈'];
-    $icon    = $iconMap[$ext] ?? '📁';
+    $iconMap = [
+        'ppt' => '<i class="bi bi-file-earmark-ppt-fill"></i>', 'pptx' => '<i class="bi bi-file-earmark-ppt-fill"></i>',
+        'zip' => '<i class="bi bi-file-earmark-zip-fill"></i>', 'rar' => '<i class="bi bi-file-earmark-zip-fill"></i>',
+        'xls' => '<i class="bi bi-file-earmark-excel-fill"></i>', 'xlsx' => '<i class="bi bi-file-earmark-excel-fill"></i>',
+    ];
+    $icon    = $iconMap[$ext] ?? '<i class="bi bi-file-earmark-fill"></i>';
     $typeLabels = [
         'pptx' => 'PowerPoint Presentation',
         'ppt' => 'PowerPoint Presentation',
@@ -573,8 +577,8 @@ if ($inline && !$canInline) {
                 <p class="muted"><?php echo $typeLabel; ?> · <?php echo $sizeLabel; ?></p>
             </div>
             <div class="topbar-actions">
-                <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-                <a class="btn secondary" href="course.php?id=<?php echo (int)$courseId; ?>">← Back to Course</a>
+                <a class="btn glass" href="course.php?id=<?php echo (int)$courseId; ?>">← Back to Course</a>
+                <button class="theme-toggle" role="switch" onclick="toggleTheme()" title="Dark mode"></button>
             </div>
         </header>
         <main class="page">
@@ -688,7 +692,11 @@ if ($inline && $canInline) {
                 }
 
                 .pdf-btn.dl {
-                    background: #07a701;
+                    background-color: #07a701;
+                    background-image: url('assets/images/buttons/primary-btn-bg.png');
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
                     color: #fff;
                 }
 
@@ -786,13 +794,13 @@ if ($inline && $canInline) {
                     <p>PDF Document · <?php echo $sizeLabel; ?></p>
                 </div>
                 <div class="pdf-topbar-btns">
-                    <button class="theme-btn" onclick="toggleTheme()" title="Dark mode" style="color:#fff;">🌙</button>
                     <a class="pdf-btn dl"
                         href="download.php?type=<?php echo htmlspecialchars($type); ?>&id=<?php echo $id; ?>"
                         target="_blank">
                         ⬇ Download
                     </a>
                     <a class="pdf-btn bk" href="course.php?id=<?php echo (int)$courseId; ?>">← Back to Course</a>
+                    <button class="theme-toggle" role="switch" onclick="toggleTheme()" title="Dark mode"></button>
                 </div>
             </div>
 
@@ -916,7 +924,7 @@ if ($inline && $canInline) {
                 loadPdf().catch(err => {
                     document.getElementById('pdf-loading').innerHTML =
                         '<p style="color:#f87171;">Could not load PDF: ' + err.message + '</p>' +
-                        '<a href="download.php?type=<?php echo htmlspecialchars($type); ?>&id=<?php echo $id; ?>" style="color:#07a701;">⬇ Download instead</a>';
+                        '<a href="download.php?type=<?php echo htmlspecialchars($type); ?>&id=<?php echo $id; ?>" style="color:var(--primary-dark);">⬇ Download instead</a>';
                 });
             </script>
         </body>

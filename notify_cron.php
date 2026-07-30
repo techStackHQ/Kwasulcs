@@ -48,7 +48,7 @@ if (!$isCLI && ($_GET['run'] ?? '') !== '1') {
             </div>
             <div class="topbar-actions">
                 <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
-                <a class="btn secondary" href="dashboard.php">Dashboard</a>
+                <a class="btn secondary btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
             </div>
         </header>
         <main class="page">
@@ -101,7 +101,7 @@ function render_output(array $lines, bool $isCLI): void
             <div class=\"topbar-actions\">
               <button class=\"theme-btn\" onclick=\"toggleTheme()\" title=\"Dark mode\">🌙</button>
               <a class=\"btn secondary\" href=\"notifications.php\">View Notifications</a>
-              <a class=\"btn secondary\" href=\"dashboard.php\">Dashboard</a>
+              <a class=\"btn secondary btn-go-dashboard\" href=\"dashboard.php\"><i class=\"bi bi-grid-1x2-fill\"></i> Go to Dashboard</a>
             </div>
           </header>
           <main class=\"page\">
@@ -139,7 +139,9 @@ try {
             ce.notify_email AS ev_notify_email,
             ce.notify_web   AS ev_notify_web,
             u.email         AS user_email,
-            u.full_name     AS user_name
+            u.full_name     AS user_name,
+            u.pref_email_notifications,
+            u.pref_web_notifications
         FROM calendar_notifications cn
         JOIN calendar_events ce ON ce.id = cn.event_id
         JOIN users u            ON u.id  = cn.user_id
@@ -166,7 +168,7 @@ foreach ($due as $row) {
     $startFmt = date('D, d M Y \a\t g:i A', strtotime($row['start_datetime']));
 
     // ── Web notification ──────────────────────────────────────────────────────
-    if (!$row['sent_web'] && $row['ev_notify_web']) {
+    if (!$row['sent_web'] && $row['ev_notify_web'] && $row['pref_web_notifications']) {
         $msg = "Reminder: \"{$row['event_title']}\" starts {$startFmt}";
         if ($row['location']) $msg .= " @ {$row['location']}";
 
@@ -223,7 +225,7 @@ foreach ($due as $row) {
     }
 
     // ── Email notification ────────────────────────────────────────────────────
-    if (!$row['sent_email'] && $row['ev_notify_email'] && $row['user_email']) {
+    if (!$row['sent_email'] && $row['ev_notify_email'] && $row['user_email'] && $row['pref_email_notifications']) {
         $subject = "[KWASU LCS] Reminder: {$row['event_title']}";
 
         $typeIcon = match ($row['event_type']) {
@@ -330,7 +332,7 @@ if (!$isCLI) {
             <div class="topbar-actions">
                 <button class="theme-btn" onclick="toggleTheme()" title="Dark mode">🌙</button>
                 <a class="btn secondary" href="notifications.php">View Notifications</a>
-                <a class="btn secondary" href="dashboard.php">Dashboard</a>
+                <a class="btn secondary btn-go-dashboard" href="dashboard.php"><i class="bi bi-grid-1x2-fill"></i> Go to Dashboard</a>
             </div>
         </header>
         <main class="page">
