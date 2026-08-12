@@ -1,4 +1,4 @@
-# LASU LMS Starter
+# Kwasu LMS Starter
 
 This is a PHP + MySQL starter system that upgrades the earlier course registration portal into a lecture-focused academic resource management system.
 
