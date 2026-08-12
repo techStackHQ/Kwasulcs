@@ -138,6 +138,7 @@ try {
             ce.description,
             ce.notify_email AS ev_notify_email,
             ce.notify_web   AS ev_notify_web,
+            c.code          AS course_code,
             u.email         AS user_email,
             u.full_name     AS user_name,
             u.pref_email_notifications,
@@ -145,6 +146,7 @@ try {
         FROM calendar_notifications cn
         JOIN calendar_events ce ON ce.id = cn.event_id
         JOIN users u            ON u.id  = cn.user_id
+        LEFT JOIN courses c     ON c.id  = ce.course_id
         WHERE cn.scheduled_at <= ?
           AND (cn.sent_email = 0 OR cn.sent_web = 0)
         ORDER BY cn.scheduled_at ASC
@@ -165,12 +167,9 @@ $webCreated = 0;
 $errors     = 0;
 
 foreach ($due as $row) {
-    $startFmt = date('D, d M Y \a\t g:i A', strtotime($row['start_datetime']));
-
     // ── Web notification ──────────────────────────────────────────────────────
     if (!$row['sent_web'] && $row['ev_notify_web'] && $row['pref_web_notifications']) {
-        $msg = "Reminder: \"{$row['event_title']}\" starts {$startFmt}";
-        if ($row['location']) $msg .= " @ {$row['location']}";
+        $msg = reminder_short_message($row);
 
         try {
             // Atomic claim before acting — re-checks the database right now
@@ -206,7 +205,7 @@ foreach ($due as $row) {
         if ($pushSub && $pushSub['endpoint']) {
             $payload = json_encode([
                 'title' => 'KWASU LCS Reminder',
-                'body'  => '"' . $row['event_title'] . '" starts ' . date('D d M \\at g:i A', strtotime($row['start_datetime'])),
+                'body'  => reminder_short_message($row),
                 'url'   => '/LMS-portal/notifications.php',
                 'tag'   => 'lcs-event-' . $row['event_id'],
             ]);
@@ -227,53 +226,7 @@ foreach ($due as $row) {
     // ── Email notification ────────────────────────────────────────────────────
     if (!$row['sent_email'] && $row['ev_notify_email'] && $row['user_email'] && $row['pref_email_notifications']) {
         $subject = "[KWASU LCS] Reminder: {$row['event_title']}";
-
-        $typeIcon = match ($row['event_type']) {
-            'exam'     => '📋',
-            'test'     => '✏️',
-            'lecture'  => '🎓',
-            'tutorial' => '📚',
-            default    => '📅',
-        };
-
-        $html = "
-        <div style='font-family:Inter,Segoe UI,sans-serif;max-width:560px;margin:0 auto;'>
-            <div style='background:linear-gradient(135deg,#07a701,#c08810);padding:24px 28px;border-radius:16px 16px 0 0;'>
-                <h1 style='color:#fff;margin:0;font-size:20px;'>$typeIcon Event Reminder</h1>
-                <p style='color:rgba(255,255,255,.85);margin:4px 0 0;font-size:13px;'>KWASU Lecture Capture System</p>
-            </div>
-            <div style='background:#fff;padding:24px 28px;border-radius:0 0 16px 16px;border:1px solid #e2e8f0;border-top:0;'>
-                <p style='margin:0 0 4px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;'>
-                    " . strtoupper(str_replace('_', ' ', $row['event_type'])) . "
-                </p>
-                <h2 style='margin:0 0 20px;font-size:22px;color:#0f172a;'>" . htmlspecialchars($row['event_title']) . "</h2>
-                <table style='width:100%;border-collapse:collapse;font-size:14px;color:#0f172a;'>
-                    <tr>
-                        <td style='padding:8px 0;width:80px;color:#64748b;vertical-align:top;'>🕐 When</td>
-                        <td style='padding:8px 0;font-weight:600;'>$startFmt</td>
-                    </tr>";
-
-        if ($row['location']) {
-            $html .= "<tr>
-                        <td style='padding:8px 0;color:#64748b;'>📍 Where</td>
-                        <td style='padding:8px 0;'>" . htmlspecialchars($row['location']) . "</td>
-                      </tr>";
-        }
-        if ($row['description']) {
-            $html .= "<tr>
-                        <td style='padding:8px 0;color:#64748b;vertical-align:top;'>📝 Note</td>
-                        <td style='padding:8px 0;'>" . htmlspecialchars($row['description']) . "</td>
-                      </tr>";
-        }
-
-        $html .= "</table>
-                <div style='margin-top:20px;padding:14px;background:#f0fdf4;border-radius:10px;border-left:4px solid #07a701;'>
-                    <p style='margin:0;font-size:13px;color:#166534;'>
-                        This is an automated reminder from KWASU LCS.
-                    </p>
-                </div>
-            </div>
-        </div>";
+        $html    = reminder_email_html($row);
 
         try {
             // Atomic claim before sending — same fix as the web block above.

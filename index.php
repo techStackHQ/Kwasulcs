@@ -6,6 +6,23 @@ if (current_user()) {
     exit();
 }
 
+// ── Branded per-department entry point (Task 14) ─────────────────────────────
+// ?dept=<slug> is COSMETIC ONLY — it picks which department's name/color/logo
+// this pre-login page displays, nothing more. It is NEVER read anywhere in
+// the login handler below, and never touches $_SESSION. Which department a
+// logged-in user actually belongs to comes exclusively from that user's own
+// department_id column (see current_user() in config.php) — a Mass Comm
+// student who lands here via a CS-branded link, an old bookmark, or a typo
+// still gets their own correct Mass Comm dashboard after logging in, because
+// the auth path below doesn't know or care which branded page they arrived
+// through. Trusting the URL for anything beyond the paint job here would be
+// exactly the kind of access-control-by-URL-parameter bug that's trivial to
+// spoof.
+$deptSlug = trim((string) ($_GET['dept'] ?? ''));
+$dept     = $deptSlug !== '' ? department_by_slug($deptSlug) : null;
+$brandName  = $dept ? $dept['name'] : 'KWASU LCS';
+$brandColor = $dept ? $dept['primary_color'] : '#07a701';
+
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -15,25 +32,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($matric === '' || $password === '') {
         $error = 'Enter your matric number and password.';
     } else {
-        $stmt = db()->prepare('SELECT id, full_name, matric_no, password, role FROM users WHERE matric_no = ? LIMIT 1');
+        ensure_login_lockout_columns();
+        $stmt = db()->prepare('SELECT id, full_name, matric_no, password, role, lockout_until FROM users WHERE matric_no = ? LIMIT 1');
         $stmt->execute([$matric]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password'])) {
+        // Checked BEFORE password_verify() runs at all — a locked account
+        // gets rejected without the password ever being tested, so timing
+        // and response shape can't leak whether the password would have
+        // been correct.
+        $lockedSeconds = $user ? login_lockout_remaining($user) : 0;
+
+        if ($lockedSeconds > 0) {
+            $mins = (int) ceil($lockedSeconds / 60);
+            $error = "Too many failed attempts. Try again in {$mins} minute" . ($mins === 1 ? '' : 's') . '.';
+        } elseif ($user && password_verify($password, $user['password'])) {
+            // Session fixation defense: rotate the session id at the exact
+            // moment of authentication, before any authenticated state is
+            // attached to it. Without this, a session id an attacker set on
+            // the victim's browser BEFORE login (e.g. via a crafted link on
+            // a related subdomain) would silently become a valid
+            // authenticated session the instant the victim logs in — the id
+            // itself never changed, so the attacker's copy of it still
+            // works. The `true` argument deletes the old session's data so
+            // the pre-login id can't be replayed either.
+            session_regenerate_id(true);
             $_SESSION['user_id'] = (int)$user['id'];
             $_SESSION['role'] = $user['role'];
-            // "Remember this device" — PHP's session cookie has no expiry by
-            // default (dies when the browser closes); re-issuing it with a
-            // 30-day lifetime is what actually keeps the session alive
-            // across visits, rather than just being a decorative checkbox.
+            clear_login_lockout((int)$user['id']);
+            // "Remember this device" — a separate long-lived selector/
+            // validator token (see issue_remember_token() in config.php),
+            // NOT the session id itself. Reusing the session id here used
+            // to mean a stolen "remember me" cookie WAS a live, un-
+            // revocable session hijack with no separate expiry/audit trail
+            // from the session system.
             if (!empty($_POST['remember'])) {
-                setcookie(session_name(), session_id(), time() + 30 * 24 * 60 * 60, '/');
+                issue_remember_token((int)$user['id']);
             }
             header('Location: dashboard.php');
             exit();
+        } else {
+            // Only a real, found account can be rate-limited this way —
+            // there's no row to attach a counter to for a matric number
+            // that doesn't exist, and incrementing nothing here is
+            // intentional (this endpoint's response is already identical
+            // for "wrong password" and "no such account" below, so this
+            // doesn't create a new enumeration signal).
+            if ($user) {
+                record_failed_login((int)$user['id']);
+            }
+            $error = 'Invalid matric number or password.';
         }
-
-        $error = 'Invalid matric number or password.';
     }
 }
 ?>
@@ -41,7 +90,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Login'; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = $dept ? ($dept['name'] . ' — Login') : 'Login';
+    include __DIR__ . '/partials/head.php'; ?>
+    <?php if ($dept): ?>
+        <style>
+            /* Cosmetic-only department accent (see the comment above $deptSlug
+               in the PHP block) — swaps the brand color used by buttons/links
+               on THIS pre-login page only, nothing auth-related. */
+            :root {
+                --primary: <?php echo h($brandColor); ?>;
+                --primary-dark: <?php echo h($brandColor); ?>;
+            }
+        </style>
+    <?php endif; ?>
 </head>
 
 <body class="auth-body">
@@ -51,7 +115,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="auth-shell">
         <div class="auth-shell-top">
             <div class="auth-panel auth-panel-left">
-                <div class="brand-badge"><?php echo brand_logo(); ?> KWASU LCS</div>
+                <div class="brand-badge">
+                    <?php if ($dept && $dept['logo_path']): ?>
+                        <img src="<?php echo h($dept['logo_path']); ?>" class="brand-logo" alt="">
+                    <?php else: ?>
+                        <?php echo brand_logo(); ?>
+                    <?php endif; ?>
+                    <?php echo $dept ? h('KWASU LCS — ' . $dept['name']) : 'KWASU LCS'; ?>
+                </div>
                 <h1>Lecture-focused Academic Resource Management</h1>
                 <p>A centralized platform for lecture materials, course resources, tutorials, assessments, and academic collaboration.</p>
 
@@ -72,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
 
                 <form method="post" class="auth-form auth-form--login">
-                    <label for="matric_no">Matric Number</label>
+                    <label for="matric_no">Matric Number/ID</label>
                     <div class="auth-input-wrap">
                         <span class="auth-input-icon"><i class="bi bi-person-fill"></i></span>
                         <input type="text" name="matric_no" id="matric_no" required placeholder="Enter your matric number">
@@ -104,7 +175,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div class="auth-shell-footer">
             <span>© 2026 KWASU LCS</span>
-            <span>Version 1.0</span>
         </div>
     </div>
     <script>

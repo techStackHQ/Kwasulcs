@@ -26,8 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['disconnect_google']))
 // current_user() only selects a fixed column list and caches it, so the
 // pref_* and google_* columns are read here directly instead — and re-read
 // after a save rather than trusting that cache, so the page reflects the
-// update immediately.
-ensure_google_oauth_columns();
+// update immediately. (Schema already established in production — see the
+// note in current_user() in config.php for why the migration call that
+// used to run here was removed.)
 $prefStmt = db()->prepare('SELECT pref_email_notifications, pref_web_notifications, pref_chat_notifications, email, google_id, google_picture, google_connected_at FROM users WHERE id = ?');
 $prefStmt->execute([$user['id']]);
 $prefs = $prefStmt->fetch();
@@ -45,7 +46,11 @@ $googleMessages = [
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Settings'; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Settings';
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">

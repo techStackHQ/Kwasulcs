@@ -5,29 +5,34 @@ require_login();
 $user = current_user();
 $role = $user['role'];
 
-// ── Auto-fire pending notifications on page load (no cron needed on XAMPP) ───
+// ── Auto-fire pending WEB notifications on page load (no cron needed) ────────
+// Email sending was removed from this page-render path — it used to call
+// send_mail() synchronously here, which could block dashboard rendering on
+// a slow/blocked SMTP connection. Web notifications stay here (fast,
+// DB-only, no network call). Email firing now happens via notify_poll.php's
+// background poll (async, doesn't block page paint) and notify_cron.php
+// (a real cron job, if configured on the host) — both cover the exact same
+// due-reminder rows via the same atomic-claim pattern, so nothing is lost.
 try {
-    $dueChk = db()->prepare("SELECT COUNT(*) FROM calendar_notifications WHERE scheduled_at <= NOW() AND (sent_web=0 OR sent_email=0)");
+    $dueChk = db()->prepare("SELECT COUNT(*) FROM calendar_notifications WHERE scheduled_at <= NOW() AND sent_web=0");
     $dueChk->execute();
     if ((int)$dueChk->fetchColumn() > 0) {
-        ob_start();
         $cronNow2 = date('Y-m-d H:i:s');
         $cronStmt2 = db()->prepare("
-            SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_email, cn.sent_web,
-                   ce.title AS event_title, ce.start_datetime, ce.location,
-                   ce.notify_email AS ev_notify_email, ce.notify_web AS ev_notify_web,
-                   u.email AS user_email, u.full_name AS user_name,
-                   u.pref_email_notifications, u.pref_web_notifications
+            SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_web,
+                   ce.title AS event_title, ce.event_type, ce.start_datetime, ce.location, ce.description,
+                   ce.notify_web AS ev_notify_web,
+                   c.code AS course_code,
+                   u.pref_web_notifications
             FROM calendar_notifications cn
             JOIN calendar_events ce ON ce.id = cn.event_id
             JOIN users u ON u.id = cn.user_id
-            WHERE cn.scheduled_at <= ? AND (cn.sent_email = 0 OR cn.sent_web = 0)
+            LEFT JOIN courses c ON c.id = ce.course_id
+            WHERE cn.scheduled_at <= ? AND cn.sent_web = 0
             LIMIT 50
         ");
         $cronStmt2->execute([$cronNow2]);
         foreach ($cronStmt2->fetchAll() as $cr) {
-            $fmt2 = date('D, d M Y \at g:i A', strtotime($cr['start_datetime']));
-
             // Claim the row atomically before acting — prevents the same
             // notification firing more than once if two requests (open tabs,
             // overlapping page loads, the background poll, etc.) hit this
@@ -36,23 +41,11 @@ try {
                 $claimWeb2 = db()->prepare('UPDATE calendar_notifications SET sent_web=1 WHERE id=? AND sent_web=0');
                 $claimWeb2->execute([$cr['notif_id']]);
                 if ($claimWeb2->rowCount() > 0) {
-                    $msg2 = "Reminder: \"{$cr['event_title']}\" starts {$fmt2}" . ($cr['location'] ? " @ {$cr['location']}" : "");
+                    $msg2 = reminder_short_message($cr);
                     db()->prepare('INSERT IGNORE INTO web_notifications (user_id, event_id, message) VALUES (?,?,?)')->execute([$cr['user_id'], $cr['event_id'], $msg2]);
                 }
             }
-            if (!$cr['sent_email'] && $cr['ev_notify_email'] && $cr['user_email'] && $cr['pref_email_notifications']) {
-                $claimEmail2 = db()->prepare('UPDATE calendar_notifications SET sent_email=1 WHERE id=? AND sent_email=0');
-                $claimEmail2->execute([$cr['notif_id']]);
-                if ($claimEmail2->rowCount() > 0) {
-                    $html2 = "<div style='font-family:sans-serif;'><h2>📅 {$cr['event_title']}</h2><p><strong>When:</strong> {$fmt2}</p>" . ($cr['location'] ? "<p><strong>Where:</strong> {$cr['location']}</p>" : "") . "</div>";
-                    $sendOk2 = send_mail($cr['user_email'], $cr['user_name'], "[KWASU LCS] Reminder: {$cr['event_title']}", $html2);
-                    if (!$sendOk2) {
-                        db()->prepare('UPDATE calendar_notifications SET sent_email=0 WHERE id=?')->execute([$cr['notif_id']]);
-                    }
-                }
-            }
         }
-        ob_end_clean();
     }
 } catch (\Throwable $e) { /* silent fail */
 }
@@ -105,7 +98,12 @@ $typeColors = [
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Dashboard'; $extraCss = ['assets/calendar.css']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Dashboard';
+    $extraCss = ['assets/calendar.css'];
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">

@@ -145,7 +145,12 @@ function section_label(string $type): string
 <html lang="en">
 
 <head>
-    <?php $pageTitle = $course['code'] . ' - ' . $course['title']; $extraCss = ['assets/course.css']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = $course['code'] . ' - ' . $course['title'];
+    $extraCss = ['assets/course.css'];
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
@@ -337,7 +342,7 @@ function section_label(string $type): string
                                                 <div class="week-quiz-icon"><i class="bi bi-clipboard-check-fill"></i></div>
                                                 <strong>Weekly Quiz <?php echo (int) $topic['week_number']; ?></strong>
                                                 <span class="muted">AI-generated practice quiz</span>
-                                                <button type="button" class="btn primary tiny week-quiz-btn" data-week="<?php echo (int) $topic['week_number']; ?>">Take Quiz <i class="bi bi-arrow-right"></i></button>
+                                                <a href="quiz.php?course=<?php echo (int) $courseId; ?>&amp;topic=<?php echo (int) $topic['id']; ?>" class="btn primary tiny week-quiz-btn">Take Quiz <i class="bi bi-arrow-right"></i></a>
                                             </div>
                                         </div>
                                     <?php endif; ?>
@@ -502,18 +507,18 @@ function section_label(string $type): string
         </div>
 
         <script>
-            (function () {
+            (function() {
                 const COURSE_ID = <?php echo (int) $courseId; ?>;
                 const IS_STUDENT = <?php echo $isStudent ? 'true' : 'false'; ?>;
                 const REGISTERED = <?php echo $registered ? 'true' : 'false'; ?>;
 
                 // ── Accordion ────────────────────────────────────────────────────────
-                document.querySelectorAll('.accordion-header').forEach(function (header) {
-                    header.addEventListener('click', function () {
+                document.querySelectorAll('.accordion-header').forEach(function(header) {
+                    header.addEventListener('click', function() {
                         const item = header.closest('.accordion-item');
                         const panel = item.querySelector('.accordion-panel');
                         const wasOpen = item.classList.contains('open');
-                        document.querySelectorAll('.accordion-item.open').forEach(function (openItem) {
+                        document.querySelectorAll('.accordion-item.open').forEach(function(openItem) {
                             openItem.classList.remove('open');
                             openItem.querySelector('.accordion-header').setAttribute('aria-expanded', 'false');
                             openItem.querySelector('.accordion-panel').hidden = true;
@@ -527,14 +532,17 @@ function section_label(string $type): string
                 });
 
                 // ── Bookmark toggle (AJAX, no page reload) ──────────────────────────
-                document.querySelectorAll('.accordion-bookmark-btn').forEach(function (btn) {
-                    btn.addEventListener('click', function (e) {
+                document.querySelectorAll('.accordion-bookmark-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
                         e.stopPropagation();
                         const fd = new FormData();
                         fd.append('topic_id', btn.dataset.topicId);
                         fd.append('course_id', COURSE_ID);
                         fd.append('ajax', '1');
-                        fetch('bookmark.php', { method: 'POST', body: fd }).catch(() => {});
+                        fetch('bookmark.php', {
+                            method: 'POST',
+                            body: fd
+                        }).catch(() => {});
                         const icon = btn.querySelector('i');
                         const nowBookmarked = icon.classList.contains('bi-star');
                         icon.classList.toggle('bi-star', !nowBookmarked);
@@ -560,7 +568,10 @@ function section_label(string $type): string
                         fd.append('course_id', COURSE_ID);
                         fd.append('video_id', videoId);
                         fd.append('watched', '1');
-                        fetch('progress.php', { method: 'POST', body: fd }).catch(() => {});
+                        fetch('progress.php', {
+                            method: 'POST',
+                            body: fd
+                        }).catch(() => {});
                     }
                 }
 
@@ -568,16 +579,18 @@ function section_label(string $type): string
                     videoFrame.src = '';
                     videoModal.hidden = true;
                     document.body.classList.remove('drawer-open');
-                    window.scrollTo({ top: lastScrollY });
+                    window.scrollTo({
+                        top: lastScrollY
+                    });
                 }
 
-                document.addEventListener('click', function (e) {
+                document.addEventListener('click', function(e) {
                     const item = e.target.closest('.video-list-item');
                     if (!item || !item.dataset.embed) return;
                     openVideo(item.dataset.embed, item.dataset.title || '', item.dataset.videoId);
                 });
                 document.getElementById('videoCloseBtn').addEventListener('click', closeVideo);
-                videoModal.addEventListener('click', function (e) {
+                videoModal.addEventListener('click', function(e) {
                     if (e.target === videoModal) closeVideo();
                 });
 
@@ -592,12 +605,13 @@ function section_label(string $type): string
                     listModal.hidden = false;
                     document.body.classList.add('drawer-open');
                 }
+
                 function closeListModal() {
                     listModal.hidden = true;
                     document.body.classList.remove('drawer-open');
                 }
                 document.getElementById('listModalCloseBtn').addEventListener('click', closeListModal);
-                listModal.addEventListener('click', function (e) {
+                listModal.addEventListener('click', function(e) {
                     if (e.target === listModal) closeListModal();
                 });
 
@@ -605,22 +619,22 @@ function section_label(string $type): string
                     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 }
 
-                document.querySelectorAll('.view-all-videos-btn').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
+                document.querySelectorAll('.view-all-videos-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
                         const panel = btn.closest('.accordion-panel');
                         const videos = JSON.parse(panel.dataset.weekVideos || '[]');
-                        const html = videos.map(function (v) {
-                            return '<button type="button" class="video-list-item" data-embed="' + escHtml(v.embed) + '" data-title="' + escHtml(v.title) + '" data-video-id="' + v.id + '">'
-                                + '<i class="bi bi-play-circle-fill"></i><span class="video-list-item-title">' + escHtml(v.title) + '</span>'
-                                + (v.watched ? '<i class="bi bi-check-circle-fill video-watched-tick" title="Watched"></i>' : '')
-                                + '</button>';
+                        const html = videos.map(function(v) {
+                            return '<button type="button" class="video-list-item" data-embed="' + escHtml(v.embed) + '" data-title="' + escHtml(v.title) + '" data-video-id="' + v.id + '">' +
+                                '<i class="bi bi-play-circle-fill"></i><span class="video-list-item-title">' + escHtml(v.title) + '</span>' +
+                                (v.watched ? '<i class="bi bi-check-circle-fill video-watched-tick" title="Watched"></i>' : '') +
+                                '</button>';
                         }).join('');
                         openListModal('All Videos', html || '<p class="muted">No videos yet.</p>');
                     });
                 });
 
-                document.querySelectorAll('.view-all-docs-btn').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
+                document.querySelectorAll('.view-all-docs-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
                         const panel = btn.closest('.accordion-panel');
                         const allDocs = panel.querySelector('.week-all-docs');
                         openListModal('All Documents', allDocs ? allDocs.innerHTML : '<p class="muted">No documents yet.</p>');
@@ -629,14 +643,14 @@ function section_label(string $type): string
 
                 const annViewAllBtn = document.querySelector('.view-all-ann-btn');
                 if (annViewAllBtn) {
-                    annViewAllBtn.addEventListener('click', function () {
+                    annViewAllBtn.addEventListener('click', function() {
                         window.location.href = 'notifications.php';
                     });
                 }
 
                 // ── Announcements & Tutorials tabs ───────────────────────────────────
-                document.querySelectorAll('.ann-tab').forEach(function (tab) {
-                    tab.addEventListener('click', function () {
+                document.querySelectorAll('.ann-tab').forEach(function(tab) {
+                    tab.addEventListener('click', function() {
                         document.querySelectorAll('.ann-tab').forEach(t => t.classList.remove('active'));
                         document.querySelectorAll('.ann-tab-panel').forEach(p => p.hidden = true);
                         tab.classList.add('active');
@@ -649,569 +663,20 @@ function section_label(string $type): string
                 const annNewForm = document.getElementById('annNewForm');
                 const annCancelBtn = document.getElementById('annCancelBtn');
                 if (annNewBtn) {
-                    annNewBtn.addEventListener('click', function () {
+                    annNewBtn.addEventListener('click', function() {
                         annNewForm.hidden = false;
                         annNewBtn.hidden = true;
                     });
                 }
                 if (annCancelBtn) {
-                    annCancelBtn.addEventListener('click', function () {
+                    annCancelBtn.addEventListener('click', function() {
                         annNewForm.hidden = true;
                         annNewBtn.hidden = false;
                     });
                 }
-
-                // ── Per-week "Take Quiz" — reuses the existing quiz modal/generator
-                // untouched: pre-select its scope dropdown, then trigger its own
-                // start button so none of that logic needs duplicating here. ────────
-                document.addEventListener('click', function (e) {
-                    const quizBtn = e.target.closest('.week-quiz-btn');
-                    if (!quizBtn) return;
-                    const scopeSel = document.getElementById('quiz-scope');
-                    const overlay = document.getElementById('quiz-overlay');
-                    const startBtn = document.getElementById('quiz-start-btn');
-                    if (scopeSel) scopeSel.value = 'week_' + quizBtn.dataset.week;
-                    if (overlay) overlay.classList.remove('hidden');
-                    if (startBtn) startBtn.click();
-                });
             })();
         </script>
     </main>
-    <!-- ══ QUIZ MODAL ════════════════════════════════════════════════════════════ -->
-    <style>
-        #quiz-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
-            background: rgba(15, 23, 42, .55);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        #quiz-overlay.hidden {
-            display: none;
-        }
-
-        #quiz-box {
-            background: #fff;
-            border-radius: 24px;
-            width: 100%;
-            max-width: 640px;
-            box-shadow: 0 24px 80px rgba(15, 23, 42, .22);
-            display: flex;
-            flex-direction: column;
-            max-height: 90vh;
-            overflow: hidden;
-        }
-
-        #quiz-header {
-            background: linear-gradient(135deg, #07a701, #059669);
-            color: #fff;
-            padding: 20px 24px;
-            flex-shrink: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        #quiz-header h2 {
-            margin: 0;
-            font-size: 18px;
-        }
-
-        #quiz-header p {
-            margin: 4px 0 0;
-            font-size: 13px;
-            opacity: .85;
-        }
-
-        #quiz-close {
-            background: rgba(255, 255, 255, .2);
-            border: none;
-            color: #fff;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        #quiz-close:hover {
-            background: rgba(255, 255, 255, .35);
-        }
-
-        #quiz-body {
-            padding: 24px;
-            overflow-y: auto;
-            flex: 1;
-        }
-
-        /* Setup screen */
-        #quiz-setup label {
-            font-weight: 600;
-            font-size: 14px;
-            display: block;
-            margin-bottom: 6px;
-        }
-
-        #quiz-setup select {
-            width: 100%;
-            margin-bottom: 16px;
-        }
-
-        #quiz-start-btn {
-            width: 100%;
-            font-size: 16px;
-            padding: 14px;
-        }
-
-        /* Progress bar */
-        #quiz-progress-wrap {
-            margin-bottom: 20px;
-        }
-
-        #quiz-progress-bar {
-            height: 6px;
-            background: #e2e8f0;
-            border-radius: 99px;
-            overflow: hidden;
-        }
-
-        #quiz-progress-fill {
-            height: 100%;
-            background: #07a701;
-            border-radius: 99px;
-            transition: width .3s;
-        }
-
-        #quiz-progress-label {
-            font-size: 12px;
-            color: #64748b;
-            margin-top: 6px;
-            text-align: right;
-        }
-
-        /* Question */
-        #quiz-question-text {
-            font-size: 17px;
-            font-weight: 700;
-            margin-bottom: 20px;
-            line-height: 1.45;
-            color: #0f172a;
-        }
-
-        .quiz-option {
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: 12px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 14px;
-            margin-bottom: 10px;
-            background: #fff;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: border-color .15s, background .15s;
-            color: #0f172a;
-        }
-
-        .quiz-option:hover:not(:disabled) {
-            border-color: #07a701;
-            background: #f0fdf4;
-        }
-
-        .quiz-option.correct {
-            border-color: #07a701;
-            background: #f0fdf4;
-            color: #166534;
-        }
-
-        .quiz-option.wrong {
-            border-color: #dc2626;
-            background: #fef2f2;
-            color: #991b1b;
-        }
-
-        .quiz-option.reveal {
-            border-color: #07a701;
-            background: #f0fdf4;
-            color: #166534;
-        }
-
-        .quiz-option:disabled {
-            cursor: default;
-        }
-
-        #quiz-explanation {
-            margin-top: 14px;
-            padding: 12px 16px;
-            background: #f8fafc;
-            border-left: 4px solid #07a701;
-            border-radius: 0 10px 10px 0;
-            font-size: 13px;
-            color: #334155;
-            display: none;
-        }
-
-        #quiz-next-btn {
-            margin-top: 18px;
-            width: 100%;
-            font-size: 15px;
-        }
-
-        /* Results screen */
-        #quiz-results {
-            text-align: center;
-        }
-
-        #quiz-score-circle {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            margin: 0 auto 16px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            font-weight: 900;
-            border: 6px solid #07a701;
-            color: var(--primary-dark);
-        }
-
-        #quiz-score-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #64748b;
-        }
-
-        .quiz-review-item {
-            text-align: left;
-            margin-bottom: 14px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid #e2e8f0;
-        }
-
-        .quiz-review-q {
-            padding: 10px 14px;
-            background: #f8fafc;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .quiz-review-ans {
-            padding: 10px 14px;
-            font-size: 13px;
-        }
-
-        .quiz-review-ans.ok {
-            background: #f0fdf4;
-            color: #166534;
-        }
-
-        .quiz-review-ans.fail {
-            background: #fef2f2;
-            color: #991b1b;
-        }
-
-        /* Loading */
-        #quiz-loading {
-            text-align: center;
-            padding: 40px 0;
-        }
-
-        .quiz-spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid #e2e8f0;
-            border-top-color: #07a701;
-            border-radius: 50%;
-            animation: spin .8s linear infinite;
-            margin: 0 auto 16px;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
-
-    <div id="quiz-overlay" class="hidden">
-        <div id="quiz-box">
-            <div id="quiz-header">
-                <div>
-                    <h2><i class="bi bi-pencil-fill icon"></i> Quiz Generator</h2>
-                    <p id="quiz-header-sub"><?php echo h($course['code']); ?> — <?php echo h($course['title']); ?></p>
-                </div>
-                <button id="quiz-close">✕</button>
-            </div>
-            <div id="quiz-body">
-
-                <!-- Setup screen -->
-                <div id="quiz-setup">
-                    <p style="color:#64748b;margin:0 0 20px;font-size:14px;">
-                        The AI will generate 10 multiple choice questions based on your course content and uploaded documents.
-                    </p>
-                    <label>Quiz scope</label>
-                    <select id="quiz-scope">
-                        <option value="course">Entire Course</option>
-                        <?php foreach ($topics as $t): ?>
-                            <option value="week_<?php echo (int)$t['week_number']; ?>">
-                                Week <?php echo (int)$t['week_number']; ?> — <?php echo h($t['title']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <button class="btn primary" id="quiz-start-btn">Generate Quiz →</button>
-                </div>
-
-                <!-- Loading screen -->
-                <div id="quiz-loading" style="display:none;">
-                    <div class="quiz-spinner"></div>
-                    <p style="color:#64748b;font-size:14px;">Generating your quiz…<br>This takes about 10–20 seconds.</p>
-                </div>
-
-                <!-- Question screen -->
-                <div id="quiz-question" style="display:none;">
-                    <div id="quiz-progress-wrap">
-                        <div id="quiz-progress-bar">
-                            <div id="quiz-progress-fill" style="width:0%"></div>
-                        </div>
-                        <div id="quiz-progress-label">Question 1 of 10</div>
-                    </div>
-                    <div id="quiz-question-text"></div>
-                    <div id="quiz-options"></div>
-                    <div id="quiz-explanation"></div>
-                    <button class="btn primary" id="quiz-next-btn" style="display:none;">Next Question →</button>
-                </div>
-
-                <!-- Results screen -->
-                <div id="quiz-results" style="display:none;">
-                    <div id="quiz-score-circle">
-                        <span id="quiz-score-num">0</span>
-                        <span id="quiz-score-label">/ 10</span>
-                    </div>
-                    <p id="quiz-score-msg" style="font-size:16px;font-weight:700;margin-bottom:6px;"></p>
-                    <p style="color:#64748b;font-size:13px;margin-bottom:24px;">Review the questions you got wrong below:</p>
-                    <div id="quiz-review"></div>
-                    <button class="btn primary" id="quiz-retry-btn" style="margin-top:8px;width:100%;">Try Another Quiz</button>
-                </div>
-
-            </div>
-        </div>
-    </div>
-
-    <script>
-        (function() {
-            const COURSE_ID = <?php echo (int)$courseId; ?>;
-            const overlay = document.getElementById('quiz-overlay');
-            const openBtn = document.getElementById('quiz-open-btn');
-            const closeBtn = document.getElementById('quiz-close');
-            const scopeSel = document.getElementById('quiz-scope');
-            const startBtn = document.getElementById('quiz-start-btn');
-            const retryBtn = document.getElementById('quiz-retry-btn');
-
-            const screens = {
-                setup: document.getElementById('quiz-setup'),
-                loading: document.getElementById('quiz-loading'),
-                question: document.getElementById('quiz-question'),
-                results: document.getElementById('quiz-results'),
-            };
-
-            let questions = [],
-                current = 0,
-                score = 0,
-                wrongOnes = [];
-
-            function show(screen) {
-                Object.values(screens).forEach(s => s.style.display = 'none');
-                screens[screen].style.display = '';
-            }
-
-            if (openBtn) openBtn.addEventListener('click', () => {
-                overlay.classList.remove('hidden');
-                show('setup');
-                questions = [];
-                current = 0;
-                score = 0;
-                wrongOnes = [];
-            });
-            closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
-            overlay.addEventListener('click', e => {
-                if (e.target === overlay) overlay.classList.add('hidden');
-            });
-
-            startBtn.addEventListener('click', async () => {
-                const scopeVal = scopeSel.value; // 'course' or 'week_2'
-                let scope = 'course',
-                    weekNumber = 0;
-                if (scopeVal.startsWith('week_')) {
-                    scope = 'week';
-                    weekNumber = parseInt(scopeVal.split('_')[1]);
-                }
-
-                show('loading');
-
-                try {
-                    const res = await fetch('ai_quiz.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            course_id: COURSE_ID,
-                            scope,
-                            week_number: weekNumber
-                        }),
-                    });
-                    const data = await res.json();
-
-                    if (data.error) {
-                        show('setup');
-                        alert('Error: ' + data.error);
-                        return;
-                    }
-
-                    questions = data.questions;
-                    current = 0;
-                    score = 0;
-                    wrongOnes = [];
-                    showQuestion();
-                } catch (e) {
-                    show('setup');
-                    alert('Could not generate quiz. Please try again.');
-                }
-            });
-
-            function showQuestion() {
-                show('question');
-                const q = questions[current];
-                const pct = (current / questions.length) * 100;
-
-                document.getElementById('quiz-progress-fill').style.width = pct + '%';
-                document.getElementById('quiz-progress-label').textContent =
-                    `Question ${current + 1} of ${questions.length}`;
-                document.getElementById('quiz-question-text').textContent = q.question;
-                document.getElementById('quiz-explanation').style.display = 'none';
-                document.getElementById('quiz-next-btn').style.display = 'none';
-
-                const optWrap = document.getElementById('quiz-options');
-                optWrap.innerHTML = '';
-                q.options.forEach((opt, i) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'quiz-option';
-                    btn.textContent = opt;
-                    btn.addEventListener('click', () => handleAnswer(btn, opt, q));
-                    optWrap.appendChild(btn);
-                });
-            }
-
-            function handleAnswer(clickedBtn, opt, q) {
-                // Disable all options
-                document.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
-
-                const letter = opt.charAt(0).toUpperCase(); // 'A', 'B', 'C', 'D'
-                const isCorrect = letter === q.answer;
-
-                if (isCorrect) {
-                    clickedBtn.classList.add('correct');
-                    score++;
-                } else {
-                    clickedBtn.classList.add('wrong');
-                    wrongOnes.push({
-                        q,
-                        chosen: opt
-                    });
-                    // Reveal the correct answer
-                    document.querySelectorAll('.quiz-option').forEach(b => {
-                        if (b.textContent.charAt(0).toUpperCase() === q.answer) {
-                            b.classList.add('reveal');
-                        }
-                    });
-                }
-
-                if (q.explanation) {
-                    const exp = document.getElementById('quiz-explanation');
-                    exp.textContent = q.explanation;
-                    exp.style.display = 'block';
-                }
-
-                const nextBtn = document.getElementById('quiz-next-btn');
-                nextBtn.style.display = 'block';
-                nextBtn.textContent = current + 1 < questions.length ? 'Next Question →' : 'See Results';
-            }
-
-            document.getElementById('quiz-next-btn').addEventListener('click', () => {
-                current++;
-                if (current < questions.length) {
-                    showQuestion();
-                } else {
-                    showResults();
-                }
-            });
-
-            function showResults() {
-                show('results');
-                document.getElementById('quiz-progress-fill').style.width = '100%';
-
-                const total = questions.length;
-                const pct = Math.round((score / total) * 100);
-                document.getElementById('quiz-score-num').textContent = score;
-                document.getElementById('quiz-score-label').textContent = `/ ${total}`;
-
-                const circle = document.getElementById('quiz-score-circle');
-                circle.style.borderColor = pct >= 70 ? '#07a701' : pct >= 50 ? '#f59e0b' : '#dc2626';
-                circle.style.color = pct >= 70 ? '#07a701' : pct >= 50 ? '#f59e0b' : '#dc2626';
-
-                const msgs = pct === 100 ? '<i class="bi bi-trophy-fill icon"></i> Perfect score!' :
-                    pct >= 80 ? '<i class="bi bi-stars icon"></i> Excellent work!' :
-                    pct >= 60 ? '<i class="bi bi-hand-thumbs-up-fill icon"></i> Good effort!' :
-                    pct >= 40 ? '<i class="bi bi-journal-bookmark-fill icon"></i> Keep studying!' : '<i class="bi bi-lightning-charge-fill icon"></i> Don\'t give up!';
-                document.getElementById('quiz-score-msg').innerHTML = msgs;
-
-                const review = document.getElementById('quiz-review');
-                review.innerHTML = '';
-                if (wrongOnes.length === 0) {
-                    review.innerHTML = '<p style="color:#16a34a;font-weight:600;"><i class="bi bi-bullseye icon"></i> You got everything right!</p>';
-                } else {
-                    wrongOnes.forEach(({
-                        q,
-                        chosen
-                    }) => {
-                        const correctOpt = q.options.find(o => o.charAt(0).toUpperCase() === q.answer);
-                        review.innerHTML += `
-                    <div class="quiz-review-item">
-                        <div class="quiz-review-q">${escHtml(q.question)}</div>
-                        <div class="quiz-review-ans fail"><i class="bi bi-x-circle-fill icon"></i> Your answer: ${escHtml(chosen)}</div>
-                        <div class="quiz-review-ans ok"><i class="bi bi-check-circle-fill icon"></i> Correct: ${escHtml(correctOpt || q.answer)}</div>
-                        ${q.explanation ? `<div class="quiz-review-ans" style="background:#f8fafc;color:#475569;"><i class="bi bi-lightbulb-fill icon"></i> ${escHtml(q.explanation)}</div>` : ''}
-                    </div>`;
-                    });
-                }
-            }
-
-            retryBtn.addEventListener('click', () => {
-                questions = [];
-                current = 0;
-                score = 0;
-                wrongOnes = [];
-                show('setup');
-            });
-
-            function escHtml(str) {
-                return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            }
-        })();
-    </script>
-
     <!-- ══ AI COURSE ASSISTANT ════════════════════════════════════════════════════ -->
     <style>
         /* ── Chat widget ─────────────────────────────────────────────────────────── */
@@ -1250,13 +715,16 @@ function section_label(string $type): string
         .feedback-fab {
             bottom: 100px;
         }
+
         @media (max-width: 768px) {
             #ai-fab {
                 bottom: 84px;
             }
+
             #ai-panel {
                 bottom: 156px;
             }
+
             .feedback-fab {
                 bottom: 156px;
             }
@@ -1677,10 +1145,46 @@ function section_label(string $type): string
             let currentSessionId = null;
             let pendingAttachments = []; // [{name, type, b64, isImage}]
 
+            // Downscales an image client-side (canvas) before it's ever
+            // turned into base64 — phone camera photos can be 4-8MB, and
+            // sending that as base64 JSON is ~33% bigger again. Cutting it
+            // to ~1600px/JPEG here is what actually saves upload time on a
+            // slow connection, since it shrinks the payload before it ever
+            // hits the network. Falls back to reading the original file as-is
+            // if anything about the resize fails.
+            function resizeImageToDataUrl(file, maxDimension = 1600, quality = 0.8) {
+                return new Promise(resolve => {
+                    const readOriginal = () => {
+                        const reader = new FileReader();
+                        reader.onload = e => resolve(e.target.result);
+                        reader.onerror = () => resolve(null);
+                        reader.readAsDataURL(file);
+                    };
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        const longest = Math.max(img.width, img.height);
+                        const canvas = document.createElement('canvas');
+                        const scale = longest > maxDimension ? maxDimension / longest : 1;
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url);
+                        readOriginal();
+                    };
+                    img.src = url;
+                });
+            }
+
             // ── Attachment button ─────────────────────────────────────────────────────
             attachBtn.addEventListener('click', () => fileInput.click());
 
-            fileInput.addEventListener('change', () => {
+            fileInput.addEventListener('change', async () => {
                 const file = fileInput.files[0];
                 if (!file) return;
                 fileInput.value = '';
@@ -1688,6 +1192,19 @@ function section_label(string $type): string
                 const maxMB = isImage ? 5 : 10;
                 if (file.size > maxMB * 1024 * 1024) {
                     alert(`File too large. Max ${maxMB}MB for ${isImage ? 'images' : 'documents'}.`);
+                    return;
+                }
+                if (isImage) {
+                    const b64 = await resizeImageToDataUrl(file);
+                    if (b64) {
+                        pendingAttachments.push({
+                            name: file.name,
+                            type: 'image/jpeg',
+                            b64,
+                            isImage
+                        });
+                        renderAttachPreviews();
+                    }
                     return;
                 }
                 const reader = new FileReader();
@@ -1975,7 +1492,13 @@ function section_label(string $type): string
                 input.style.height = 'auto';
                 sendBtn.disabled = true;
 
-                const thinking = addMessage('Thinking…', 'bot thinking');
+                const thinking = addMessage('Reading your question…', 'bot thinking');
+                const stopThinkingCycler = startStatusCycler(thinking, [
+                    'Reading your question…',
+                    'Searching course materials…',
+                    'Thinking…',
+                    'Composing a response…',
+                ]);
 
                 try {
                     const res = await fetch('ai_chat.php', {
@@ -1997,6 +1520,7 @@ function section_label(string $type): string
                         })
                     });
                     const data = await res.json();
+                    stopThinkingCycler();
                     thinking.remove();
 
                     if (data.reply) {
@@ -2011,6 +1535,7 @@ function section_label(string $type): string
                         addMessage('Sorry, something went wrong: ' + (data.error || 'Unknown error'), 'bot');
                     }
                 } catch (e) {
+                    stopThinkingCycler();
                     thinking.remove();
                     addMessage('Could not reach the AI assistant. Please try again.', 'bot');
                 } finally {

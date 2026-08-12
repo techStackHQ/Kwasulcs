@@ -235,34 +235,7 @@ function extract_docx_text(string $absPath): string
     return preg_replace('/\n{3,}/', "\n\n", trim($text));
 }
 
-// ── Decide whether to load full PDF content ──────────────────────────────────
-// Only send actual PDF bytes when the question is clearly about reading documents.
-// This prevents 2MB+ payloads on every simple question, which caused timeouts.
-$docKeywords = [
-    'document',
-    'pdf',
-    'file',
-    'read',
-    'notes',
-    'lecture note',
-    'material',
-    'handout',
-    'content',
-    'what does',
-    'according to',
-    'summarize',
-    'summary',
-    'explain from',
-    'from the'
-];
 $msgLower = strtolower($message);
-$loadPdfs = false;
-foreach ($docKeywords as $kw) {
-    if (str_contains($msgLower, $kw)) {
-        $loadPdfs = true;
-        break;
-    }
-}
 
 // ── Topic relevance pre-filter (retrieval step) ───────────────────────────────
 // Rebuilding the ENTIRE course's document text on every single message — even
@@ -349,21 +322,47 @@ foreach ($topics as $topic) {
 
 // ── Decide which topics get FULL extraction ───────────────────────────────────
 // - Any topic with a keyword match (score > 0) is relevant -> full extraction.
-// - If nothing matched at all, fall back to the top 2 topics by week order
-//   recency isn't meaningful here, so just avoid extracting everything blind;
-//   broad questions get metadata-only for all topics instead (handled below).
+// - If nothing matched AT ALL: title-only keyword matching has a confirmed,
+//   common failure mode — a natural question about "the PDF"/"the video"/
+//   "the material" scores 0 against a title like "Management Information
+//   System 1", since generic words describing what KIND of content is
+//   wanted never appear in the title itself (live-tested: 5 of 6 realistic
+//   rephrasings scored 0 against real course data, producing fabricated or
+//   "I don't have access" replies instead of grounded ones). Filtering only
+//   earns its keep when there's a lot of content to filter out — for a
+//   small course, just extract everything rather than risk that failure
+//   mode; the extraction cost itself is negligible regardless of scope
+//   (confirmed ~0.02-0.03s of PHP work even for 8 documents/2MB of PDF data
+//   in the companion quiz-generation performance investigation). Courses
+//   above the threshold keep the existing metadata-only fallback, where
+//   filtering is actually worth its cost.
+const SMALL_COURSE_TOPIC_THRESHOLD = 4;
+
 $maxScore = max(array_column($topicMeta, 'score') ?: [0]);
 $relevantTopicIds = [];
 if ($maxScore > 0) {
     foreach ($topicMeta as $tm) {
         if ($tm['score'] > 0) $relevantTopicIds[] = $tm['topic']['id'];
     }
+} elseif (count($topicMeta) > 0 && count($topicMeta) <= SMALL_COURSE_TOPIC_THRESHOLD) {
+    foreach ($topicMeta as $tm) {
+        $relevantTopicIds[] = $tm['topic']['id'];
+    }
 } elseif (!$isBroadQuestion && count($topicMeta) > 0) {
-    // No keyword match and not an explicit broad question — likely a short/
-    // generic message ("hi", "thanks"). Don't extract anything heavy; the AI
-    // still sees every topic's title via the metadata line below.
+    // Larger course, no keyword match, not an explicit broad question —
+    // likely a short/generic message ("hi", "thanks"), or a genuinely
+    // unmatched question on a course too large to extract everything for
+    // free. The AI still sees every topic's title via the metadata line
+    // below, just not full content.
     $relevantTopicIds = [];
 }
+
+// True once real document/transcript text (not just a title) has actually
+// been appended to $context for at least one topic this request — drives
+// the conditional system-prompt wording below (Task 20 fix b): the model
+// must never be told it "has access to the real documents above" when
+// nothing real actually made it into the context.
+$hasRealContent = false;
 
 if ($topics) {
     $context .= "WEEKLY TOPICS:\n";
@@ -383,7 +382,11 @@ if ($topics) {
             continue;
         }
 
-        // Relevant topic — pay for full extraction.
+        // Relevant topic — pay for full extraction. PDFs are loaded the
+        // same unconditional way DOCX/TXT already are — no more separate
+        // $loadPdfs keyword gate (Task 20 fix: that second gate was an
+        // inconsistency that could withhold a PDF's real content even for
+        // a topic the relevance filter had already correctly matched).
         foreach ($tm['docs'] as $doc) {
             $absPath = PRIVATE_UPLOAD_ROOT . '/' . ltrim($doc['file_path'], '/');
             $ext     = strtolower($doc['file_type'] ?? pathinfo($absPath, PATHINFO_EXTENSION));
@@ -391,20 +394,19 @@ if ($topics) {
                 $text = extract_docx_text($absPath);
                 if ($text) {
                     $context .= "  [Document: {$doc['title']}]\n" . substr($text, 0, 3000) . "\n";
+                    $hasRealContent = true;
                 }
             } elseif ($ext === 'txt' && file_exists($absPath)) {
                 $context .= "  [Document: {$doc['title']}]\n" . substr(file_get_contents($absPath), 0, 3000) . "\n";
+                $hasRealContent = true;
             } elseif ($ext === 'pdf' && file_exists($absPath)) {
-                if ($loadPdfs) {
-                    $pdfDocuments[] = [
-                        'type'   => 'document',
-                        'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => base64_encode(file_get_contents($absPath))],
-                        'title'  => "Week {$topic['week_number']}: {$doc['title']}",
-                    ];
-                    $context .= "  [PDF: {$doc['title']} — full content provided]\n";
-                } else {
-                    $context .= "  [PDF: {$doc['title']} — available on request]\n";
-                }
+                $pdfDocuments[] = [
+                    'type'   => 'document',
+                    'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => base64_encode(file_get_contents($absPath))],
+                    'title'  => "Week {$topic['week_number']}: {$doc['title']}",
+                ];
+                $context .= "  [PDF: {$doc['title']} — full content provided]\n";
+                $hasRealContent = true;
             } else {
                 $context .= "  [Document: {$doc['title']} ({$ext})]\n";
             }
@@ -419,6 +421,7 @@ if ($topics) {
                         $context .= "  [Video Transcript: {$vid['title']}]\n";
                         // Limit to 3000 chars to stay within token budget
                         $context .= substr($transcript, 0, 3000) . (strlen($transcript) > 3000 ? "\n...(transcript continues)" : '') . "\n";
+                        $hasRealContent = true;
                     }
                 }
             }
@@ -448,22 +451,35 @@ if ($sections) {
                 $text = extract_docx_text($absPath);
                 if ($text) {
                     $context .= "  [Document: {$row['res_title']}]\n" . substr($text, 0, 2000) . "\n";
+                    $hasRealContent = true;
                 }
             } elseif ($ext === 'pdf' && file_exists($absPath)) {
-                if ($loadPdfs) {
-                    $pdfDocuments[] = ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => base64_encode(file_get_contents($absPath))], 'title' => "{$label}: {$row['res_title']}"];
-                    $context .= "  [PDF: {$row['res_title']} — full content provided]\n";
-                } else {
-                    $context .= "  [PDF: {$row['res_title']} — available on request]\n";
-                }
+                // Same as the WEEKLY TOPICS loop above — loaded unconditionally,
+                // matching how DOCX is already treated in this same block,
+                // no separate $loadPdfs gate.
+                $pdfDocuments[] = ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => base64_encode(file_get_contents($absPath))], 'title' => "{$label}: {$row['res_title']}"];
+                $context .= "  [PDF: {$row['res_title']} — full content provided]\n";
+                $hasRealContent = true;
             }
         }
     }
 }
 
 // ── Build messages for API (include conversation history for multi-turn) ──────
+// Task 20 fix (b): never claim document access the model wasn't actually
+// given. Previously this line unconditionally said "you have access to the
+// real documents above" even on requests where every topic fell back to
+// metadata/title-only — confirmed live to produce either fabricated
+// "typical" content matching the title, or a flat "I don't have access"
+// refusal, depending on how the model resolved that contradiction. Now
+// honest either way: real access is only claimed when $hasRealContent is
+// actually true for this request.
+$accessNote = $hasRealContent
+    ? "Answer questions about the actual course content — you have access to the real documents above"
+    : "You do NOT have the full text of any document loaded for this question — you can see topic and document TITLES only (marked \"available\" above), not their content. Do not invent or guess at what a document/video likely contains based on its title alone. If the student's question seems to be about specific content, ask a brief clarifying question about which topic/week they mean, or answer generally from your own knowledge if that's more helpful — be upfront either way, don't pretend to have read something you haven't";
+
 $systemPrompt = $course
-    ? "You are an AI study assistant for the KWASU Lecture Capture System (LCS) at Kwara State University.\n\nYou are helping students with the following course:\n\n{$context}\n\nYour role:\n- Answer questions about the actual course content — you have access to the real documents above\n- If the student attaches an image or document, analyse it carefully and answer in relation to the course\n- Explain concepts, summarize topics, and help students understand the material\n- Reference specific weeks or documents when relevant\n- Be encouraging, clear, and appropriately detailed\n- Stay focused on this course; politely decline unrelated questions\n\nStudent: {$user['full_name']} ({$user['role']})"
+    ? "You are an AI study assistant for the KWASU Lecture Capture System (LCS) at Kwara State University.\n\nYou are helping students with the following course:\n\n{$context}\n\nYour role:\n- {$accessNote}\n- If the student attaches an image or document, analyse it carefully and answer in relation to the course\n- Explain concepts, summarize topics, and help students understand the material\n- Reference specific weeks or documents when relevant\n- Be encouraging, clear, and appropriately detailed\n- Stay focused on this course; politely decline unrelated questions\n\nStudent: {$user['full_name']} ({$user['role']})"
     : "You are a general AI study assistant for KWASU Lecture Capture System (LCS) students at Kwara State University.\n\nYou are not scoped to any single course — help with general study questions, explain concepts, and if the student attaches an image or document, analyse it and answer helpfully.\nBe encouraging, clear, and appropriately detailed.\n\nStudent: {$user['full_name']} ({$user['role']})";
 
 // Build messages array including history
@@ -484,9 +500,21 @@ foreach ($attachments as $att) {
     if (!$b64) continue;
 
     if (!empty($att['isImage']) || str_starts_with($type, 'image/')) {
-        // Image — send as vision block
+        // Image — resize/recompress before it goes to the vision API (most
+        // of these are full-size phone camera photos; the model doesn't
+        // need more than ~1600px, and a smaller payload means a faster
+        // request). Falls back to the original bytes if GD can't process it.
         $mime = in_array($type, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
             ? $type : 'image/jpeg';
+        $decoded = base64_decode($b64, true);
+        if ($decoded !== false) {
+            $compressed = compress_image_bytes($decoded);
+            if ($compressed !== null) {
+                [$compressedBytes, $newExt] = $compressed;
+                $b64  = base64_encode($compressedBytes);
+                $mime = $newExt === 'png' ? 'image/png' : 'image/jpeg';
+            }
+        }
         $userContentBlocks[] = [
             'type'   => 'image',
             'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => $b64],
@@ -527,48 +555,14 @@ $apiMessages[] = [
     'content' => count($userContentBlocks) === 1 ? $message : $userContentBlocks,
 ];
 
-// ── Call Anthropic API ────────────────────────────────────────────────────────
-$payload = json_encode([
-    'model'      => 'claude-sonnet-4-6',
-    'max_tokens' => 1024,
-    'system'     => $systemPrompt,
-    'messages'   => $apiMessages,
-]);
-
-$ch = curl_init('https://api.anthropic.com/v1/messages');
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => $payload,
-    CURLOPT_HTTPHEADER     => [
-        'Content-Type: application/json',
-        'x-api-key: ' . ANTHROPIC_API_KEY,
-        'anthropic-version: 2023-06-01',
-        'anthropic-beta: pdfs-2024-09-25',
-    ],
-    CURLOPT_TIMEOUT => 60,
-]);
-
-$response  = curl_exec($ch);
-$httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlError = curl_error($ch);
-curl_close($ch);
-
-if ($curlError) {
+// ── Call AI provider ──────────────────────────────────────────────────────────
+try {
+    $reply = call_ai_api($systemPrompt, $apiMessages, 1024, null, 60);
+} catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode(['error' => 'Connection failed: ' . $curlError]);
+    echo json_encode(['error' => $e->getMessage()]);
     exit();
 }
-
-$data = json_decode($response, true);
-if ($httpCode !== 200 || !isset($data['content'][0]['text'])) {
-    $errMsg = $data['error']['message'] ?? 'Unknown API error';
-    http_response_code(500);
-    echo json_encode(['error' => $errMsg]);
-    exit();
-}
-
-$reply = $data['content'][0]['text'];
 
 // Save assistant reply
 db()->prepare("INSERT INTO ai_chat_messages (session_id, role, content) VALUES (?, 'assistant', ?)")

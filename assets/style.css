@@ -68,7 +68,12 @@ body {
     background: #f1f5f9;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     font-weight: 800;
     letter-spacing: -0.01em;
     line-height: 1.15;
@@ -85,6 +90,7 @@ button,
 }
 
 @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {
@@ -141,8 +147,15 @@ iframe {
 }
 
 @keyframes auth-card-in {
-    from { opacity: 0; transform: translateY(10px) scale(.99); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(.99);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -538,40 +551,6 @@ iframe {
     font-size: 12.5px;
 }
 
-/* ── CAPTCHA ───────────────────────────────────────────────────────────── */
-.captcha-box {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 4px;
-}
-
-.captcha-img {
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    height: 56px;
-    width: 160px;
-    object-fit: cover;
-}
-
-.captcha-refresh {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: var(--soft);
-    color: var(--primary-dark);
-    font-size: 17px;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: background-color .2s ease, transform .2s ease;
-}
-
-.captcha-refresh:hover {
-    background-color: rgba(7, 167, 1, .1);
-    transform: rotate(45deg);
-}
-
 /* ── Step 4: sending transition ───────────────────────────────────────── */
 .reset-sending,
 .reset-sent {
@@ -716,18 +695,9 @@ iframe {
     background: rgba(255, 255, 255, .04);
 }
 
-[data-theme="dark"] .captcha-img,
-[data-theme="dark"] .captcha-refresh {
-    border-color: rgba(255, 255, 255, .12);
-}
-
 @media (max-width: 640px) {
     .pw-requirements {
         grid-template-columns: 1fr;
-    }
-
-    .captcha-img {
-        width: 130px;
     }
 
     /* Two icon+label buttons side by side get too cramped once the panel
@@ -1240,7 +1210,7 @@ textarea:focus {
     /* Fade cards out at each edge instead of hard-clipping mid-card — this is
        the visible "end point" the slider fades into rather than an abrupt cut. */
     -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
-            mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
 }
 
 .course-slider::-webkit-scrollbar {
@@ -1406,12 +1376,12 @@ textarea:focus {
     transform: scale(1.08);
 }
 
-.color-swatch-input:checked + .color-swatch {
+.color-swatch-input:checked+.color-swatch {
     border-color: var(--text);
     box-shadow: 0 0 0 2px var(--panel) inset, 0 0 0 2px var(--text);
 }
 
-.color-swatch-input:focus-visible + .color-swatch {
+.color-swatch-input:focus-visible+.color-swatch {
     outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
@@ -2046,6 +2016,7 @@ a.doc-preview-pdf:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
     .course-row,
     .course-row-accent,
     .course-open-btn {
@@ -2389,6 +2360,7 @@ a.doc-preview-pdf:hover {
     background: var(--accent);
     color: #fff;
 }
+
 .btn.accent:hover {
     background: var(--accent-hover);
 }
@@ -2402,16 +2374,19 @@ a.doc-preview-pdf:hover {
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
 }
+
 .btn.glass:hover {
     background: rgba(255, 255, 255, .26);
     transform: translateY(-1px);
     box-shadow: 0 8px 22px rgba(0, 0, 0, .14);
 }
+
 [data-theme="dark"] .btn.glass {
     background: rgba(255, 255, 255, .08);
     border-color: rgba(255, 255, 255, .18);
     color: #f1f5f9;
 }
+
 [data-theme="dark"] .btn.glass:hover {
     background: rgba(255, 255, 255, .14);
 }
@@ -2446,6 +2421,7 @@ a.doc-preview-pdf:hover {
     box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
     transition: background .35s ease;
 }
+
 [data-theme="dark"] .theme-toggle {
     background: #1e2740;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, .4);
@@ -2463,9 +2439,18 @@ a.doc-preview-pdf:hover {
     transition: opacity .3s ease;
     pointer-events: none;
 }
-.theme-toggle .toggle-track-icon.sun-track  { opacity: 1; }
-[data-theme="dark"] .theme-toggle .toggle-track-icon.sun-track  { opacity: .4; }
-[data-theme="dark"] .theme-toggle .toggle-track-icon.moon-track { opacity: 1; }
+
+.theme-toggle .toggle-track-icon.sun-track {
+    opacity: 1;
+}
+
+[data-theme="dark"] .theme-toggle .toggle-track-icon.sun-track {
+    opacity: .4;
+}
+
+[data-theme="dark"] .theme-toggle .toggle-track-icon.moon-track {
+    opacity: 1;
+}
 
 .theme-toggle .toggle-knob {
     position: absolute;
@@ -2479,6 +2464,7 @@ a.doc-preview-pdf:hover {
     box-shadow: 0 1px 3px rgba(15, 23, 42, .3), 0 1px 1px rgba(15, 23, 42, .1);
     transition: transform .35s cubic-bezier(.65, 0, .35, 1), background .35s ease;
 }
+
 [data-theme="dark"] .theme-toggle .toggle-knob {
     transform: translateX(29px);
     background: #3a4260;
@@ -2486,7 +2472,9 @@ a.doc-preview-pdf:hover {
 }
 
 /* Hide old emoji-text theme button visuals if markup not yet migrated */
-.theme-btn { display: none; }
+.theme-btn {
+    display: none;
+}
 
 /* ── Chat list (chat.php) ──────────────────────────────────────────────── */
 .chat-list-row {
@@ -3006,4 +2994,3 @@ body.drawer-open {
 .google-connected-since {
     font-size: 12px;
 }
-

@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_login();
-ensure_chat_tables();
+// ensure_chat_tables() removed here — schema already established in
+// production. See config.php's ensure_chat_tables().
 
 header('Content-Type: application/json');
 
@@ -16,6 +17,8 @@ $type     = (string) ($_POST['type'] ?? '');
 $targetId = (int) ($_POST['target_id'] ?? 0);
 $message  = trim((string) ($_POST['message'] ?? ''));
 $hasFile  = isset($_FILES['attachment']) && ($_FILES['attachment']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+$isVoiceNote = !empty($_POST['voice_note']);
+$uploadMimeOverrides = $isVoiceNote ? voice_note_extra_mime_types() : [];
 
 if ($message === '' && !$hasFile) {
     http_response_code(400);
@@ -47,7 +50,7 @@ if ($type === 'group') {
     $attachment = null;
     if ($hasFile) {
         try {
-            $saved = save_upload($_FILES['attachment'], 'chat/group_' . $groupId);
+            $saved = save_upload($_FILES['attachment'], 'chat/group_' . $groupId, $uploadMimeOverrides);
             db()->prepare('INSERT INTO chat_attachments (message_id, file_path, original_name, file_type) VALUES (?, ?, ?, ?)')
                 ->execute([$messageId, $saved['path'], $_FILES['attachment']['name'], $saved['ext']]);
             $attachment = [
@@ -107,7 +110,7 @@ if ($type === 'dm') {
     $attachment = null;
     if ($hasFile) {
         try {
-            $saved = save_upload($_FILES['attachment'], 'chat/dm_' . $threadId);
+            $saved = save_upload($_FILES['attachment'], 'chat/dm_' . $threadId, $uploadMimeOverrides);
             db()->prepare('INSERT INTO chat_attachments (dm_message_id, file_path, original_name, file_type) VALUES (?, ?, ?, ?)')
                 ->execute([$messageId, $saved['path'], $_FILES['attachment']['name'], $saved['ext']]);
             $attachment = [

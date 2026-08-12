@@ -1,0 +1,14 @@
+# Long-lived browser caching for everything under /assets/ (CSS, JS, fonts,
+# images, vendor files). Safe because partials/head.php's asset_version()
+# already busts this via a ?v=<timestamp> query string whenever the
+# underlying file actually changes — see config.php's asset_version().
+# Wrapped in <IfModule> so this degrades harmlessly (no 500) if either
+# module isn't enabled on a given host.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 year"
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</IfModule>

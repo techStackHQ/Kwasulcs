@@ -45,6 +45,7 @@ $inlineMimes = [
     'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg',
     'gif' => 'image/gif', 'webp' => 'image/webp', 'mp4' => 'video/mp4',
     'webm' => 'audio/webm', 'ogg' => 'audio/ogg',
+    'm4a' => 'audio/mp4', 'mp3' => 'audio/mpeg', 'wav' => 'audio/wav',
 ];
 $safeName = preg_replace('/[^A-Za-z0-9._-]+/', '_', $attachment['original_name']);
 $fileSize = filesize($abs);

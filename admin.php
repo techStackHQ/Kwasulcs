@@ -3,6 +3,8 @@ require_once __DIR__ . '/config.php';
 require_login();
 ensure_topic_overview_column();
 ensure_announcements_table();
+// ensure_department_schema() removed here — schema already established in
+// production; see the note in current_user() in config.php.
 
 $user = current_user();
 if (!in_array($user['role'], ['admin', 'lecturer'], true)) {
@@ -14,8 +16,20 @@ $messages = [];
 $errors   = [];
 $__coursePalette = course_color_palette();
 
+/**
+ * Department-scoped (Task 19 Part B) — an admin no longer has blanket
+ * access to every course system-wide; they can only see/manage courses in
+ * their OWN department, exactly like a lecturer is already scoped to their
+ * own courses. There is no cross-department "super admin" authority. This
+ * is the single gate function every admin.php mutation (topics, sections,
+ * videos, documents) already routes through via a course/topic/section
+ * lookup, so fixing it here closes the gap everywhere at once.
+ */
 function can_see_course(array $course, array $user): bool
 {
+    if ((int)($course['department_id'] ?? 0) !== (int)($user['department_id'] ?? 0)) {
+        return false;
+    }
     return $user['role'] === 'admin' || (int)$course['lecturer_id'] === (int)$user['id'];
 }
 
@@ -42,9 +56,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($color, $palette, true)) {
                 $color = reset($palette);
             }
+            // Department is NEVER taken from client input (Task 19 Part B) —
+            // there is no cross-department admin/lecturer authority, so the
+            // only value that could ever legitimately apply is the acting
+            // user's own department. A submitted department_id here would
+            // be exactly the "trust a client-submitted department_id"
+            // mistake the branded-login-URL security requirement (Task 14)
+            // already established the same principle against.
+            $departmentId = (int)($user['department_id'] ?? 0);
+            $level        = (int)($_POST['level'] ?? 0);
 
-            if ($title === '' || $code === '' || !in_array($semester, ['rain', 'harmattan'], true) || $lecturerId <= 0) {
-                throw new RuntimeException('Fill all course fields correctly.');
+            if (
+                $title === '' || $code === '' || !in_array($semester, ['rain', 'harmattan'], true) || $lecturerId <= 0
+                || $departmentId <= 0 || !in_array($level, [100, 200, 300, 400], true)
+            ) {
+                throw new RuntimeException('Fill all course fields correctly, including level (and confirm your own account has a department assigned).');
             }
             if ($user['role'] !== 'admin') {
                 $lecturerId = (int)$user['id'];
@@ -55,13 +81,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$courseId]);
                 $existing = $stmt->fetch();
                 if (!$existing || !can_see_course($existing, $user)) throw new RuntimeException('Course not found.');
-                db()->prepare('UPDATE courses SET title=?,code=?,semester=?,lecturer_id=?,color=? WHERE id=?')
-                    ->execute([$title, $code, $semester, $lecturerId, $color, $courseId]);
+                db()->prepare('UPDATE courses SET title=?,code=?,semester=?,lecturer_id=?,color=?,department_id=?,level=? WHERE id=?')
+                    ->execute([$title, $code, $semester, $lecturerId, $color, $departmentId, $level, $courseId]);
                 $messages[] = 'Course updated.';
                 if (!$activeCourseId) $activeCourseId = $courseId;
             } else {
-                db()->prepare('INSERT INTO courses (title,code,semester,lecturer_id,color) VALUES (?,?,?,?,?)')
-                    ->execute([$title, $code, $semester, $lecturerId, $color]);
+                db()->prepare('INSERT INTO courses (title,code,semester,lecturer_id,color,department_id,level) VALUES (?,?,?,?,?,?,?)')
+                    ->execute([$title, $code, $semester, $lecturerId, $color, $departmentId, $level]);
                 $newId = (int)db()->lastInsertId();
                 $messages[] = 'Course created.';
                 $activeCourseId = $newId;
@@ -112,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $topicId = (int)($_POST['topic_id'] ?? 0);
             $title   = trim((string)($_POST['video_title'] ?? ''));
             $url     = trim((string)($_POST['youtube_url'] ?? ''));
-            $stmt = db()->prepare('SELECT t.*,c.lecturer_id,c.is_approved FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT t.*,c.lecturer_id,c.is_approved,c.department_id FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
             $stmt->execute([$topicId]);
             $topic = $stmt->fetch();
             if (!$topic || !can_see_course($topic, $user)) throw new RuntimeException('Topic not found.');
@@ -126,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_document') {
             $topicId = (int)($_POST['topic_id'] ?? 0);
             $title   = trim((string)($_POST['document_title'] ?? ''));
-            $stmt = db()->prepare('SELECT t.*,c.lecturer_id,c.is_approved FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT t.*,c.lecturer_id,c.is_approved,c.department_id FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
             $stmt->execute([$topicId]);
             $topic = $stmt->fetch();
             if (!$topic || !can_see_course($topic, $user)) throw new RuntimeException('Topic not found.');
@@ -141,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
             $title     = trim((string)($_POST['section_video_title'] ?? ''));
             $url       = trim((string)($_POST['section_video_url'] ?? ''));
-            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id,c.department_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
             $stmt->execute([$sectionId]);
             $section = $stmt->fetch();
             if (!$section || !can_see_course($section, $user)) throw new RuntimeException('Section not found.');
@@ -155,7 +181,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_section_document') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
             $title     = trim((string)($_POST['section_document_title'] ?? ''));
-            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id,c.department_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
             $stmt->execute([$sectionId]);
             $section = $stmt->fetch();
             if (!$section || !can_see_course($section, $user)) throw new RuntimeException('Section not found.');
@@ -168,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'delete_topic') {
             $topicId = (int)($_POST['topic_id'] ?? 0);
-            $stmt = db()->prepare('SELECT t.*,c.lecturer_id FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT t.*,c.lecturer_id,c.department_id FROM topics t JOIN courses c ON c.id=t.course_id WHERE t.id=? LIMIT 1');
             $stmt->execute([$topicId]);
             $topic = $stmt->fetch();
             if (!$topic || !can_see_course($topic, $user)) throw new RuntimeException('Topic not found.');
@@ -178,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'delete_video') {
             $videoId = (int)($_POST['video_id'] ?? 0);
-            $stmt = db()->prepare('SELECT v.*,c.lecturer_id FROM videos v JOIN topics t ON t.id=v.topic_id JOIN courses c ON c.id=t.course_id WHERE v.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT v.*,c.lecturer_id,c.department_id FROM videos v JOIN topics t ON t.id=v.topic_id JOIN courses c ON c.id=t.course_id WHERE v.id=? LIMIT 1');
             $stmt->execute([$videoId]);
             $video = $stmt->fetch();
             if (!$video || !can_see_course($video, $user)) throw new RuntimeException('Video not found.');
@@ -188,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'delete_document') {
             $docId = (int)($_POST['doc_id'] ?? 0);
-            $stmt = db()->prepare('SELECT d.*,c.lecturer_id FROM documents d JOIN topics t ON t.id=d.topic_id JOIN courses c ON c.id=t.course_id WHERE d.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT d.*,c.lecturer_id,c.department_id FROM documents d JOIN topics t ON t.id=d.topic_id JOIN courses c ON c.id=t.course_id WHERE d.id=? LIMIT 1');
             $stmt->execute([$docId]);
             $doc = $stmt->fetch();
             if (!$doc || !can_see_course($doc, $user)) throw new RuntimeException('Document not found.');
@@ -201,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'delete_section') {
             $sectionId = (int)($_POST['section_id'] ?? 0);
-            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
+            $stmt = db()->prepare('SELECT cs.*,c.lecturer_id,c.department_id FROM course_sections cs JOIN courses c ON c.id=cs.course_id WHERE cs.id=? LIMIT 1');
             $stmt->execute([$sectionId]);
             $section = $stmt->fetch();
             if (!$section || !can_see_course($section, $user)) throw new RuntimeException('Section not found.');
@@ -228,18 +254,41 @@ if (!empty($_SESSION['admin_flash'])) {
 }
 
 // ── Load all courses ──────────────────────────────────────────────────────────
+// Department-scoped for admins too (Task 19 Part B) — see can_see_course()
+// above for the full reasoning; this is the same boundary applied to the
+// listing query so an admin never even SEES another department's courses,
+// not just gets blocked from mutating them.
 if ($user['role'] === 'admin') {
-    $coursesStmt = db()->query('SELECT c.*,u.full_name AS lecturer_name FROM courses c JOIN users u ON u.id=c.lecturer_id ORDER BY c.created_at DESC');
-    $courses = $coursesStmt ? $coursesStmt->fetchAll() : [];
+    $stmt = db()->prepare('SELECT c.*,u.full_name AS lecturer_name, d.code AS department_code FROM courses c JOIN users u ON u.id=c.lecturer_id LEFT JOIN departments d ON d.id=c.department_id WHERE c.department_id=? ORDER BY c.created_at DESC');
+    $stmt->execute([$user['department_id'] ?? 0]);
+    $courses = $stmt->fetchAll();
 } else {
-    $stmt = db()->prepare('SELECT c.*,u.full_name AS lecturer_name FROM courses c JOIN users u ON u.id=c.lecturer_id WHERE c.lecturer_id=? ORDER BY c.created_at DESC');
+    $stmt = db()->prepare('SELECT c.*,u.full_name AS lecturer_name, d.code AS department_code FROM courses c JOIN users u ON u.id=c.lecturer_id LEFT JOIN departments d ON d.id=c.department_id WHERE c.lecturer_id=? ORDER BY c.created_at DESC');
     $stmt->execute([$user['id']]);
     $courses = $stmt->fetchAll();
 }
 
-$allLecturers = $user['role'] === 'admin'
-    ? db()->query("SELECT id,full_name,matric_no FROM users WHERE role IN ('lecturer','admin') ORDER BY full_name")->fetchAll()
-    : [['id' => $user['id'], 'full_name' => $user['full_name'], 'matric_no' => $user['matric_no']]];
+// Same department scoping applied to the "who can own this course" picker
+// — an admin should not even see another department's staff list here.
+if ($user['role'] === 'admin') {
+    $stmt = db()->prepare("SELECT id,full_name,matric_no FROM users WHERE role IN ('lecturer','admin') AND department_id = ? ORDER BY full_name");
+    $stmt->execute([$user['department_id'] ?? 0]);
+    $allLecturers = $stmt->fetchAll();
+} else {
+    $allLecturers = [['id' => $user['id'], 'full_name' => $user['full_name'], 'matric_no' => $user['matric_no']]];
+}
+
+// $allDepartments is no longer used for a picker in the course form (Task
+// 19 Part B — department is forced server-side to the acting user's own,
+// never chosen) but is kept for looking up that department's display name.
+$allDepartments = all_departments();
+$myDepartmentName = 'Unassigned';
+foreach ($allDepartments as $d) {
+    if ((int)$d['id'] === (int)($user['department_id'] ?? 0)) {
+        $myDepartmentName = $d['name'];
+        break;
+    }
+}
 
 // ── Active course data ────────────────────────────────────────────────────────
 $activeCourse = null;
@@ -315,7 +364,12 @@ function section_type_label(string $t): string
 <html lang="en">
 
 <head>
-    <?php $pageTitle = $activeCourse ? h($activeCourse['code']) : 'Content Management'; $extraCss = ['assets/admin.css']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = $activeCourse ? h($activeCourse['code']) : 'Content Management';
+    $extraCss = ['assets/admin.css'];
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
@@ -381,6 +435,21 @@ function section_type_label(string $t): string
                             <?php endforeach; ?>
                         </select>
                     </label>
+                    <label>Department
+                        <!-- Read-only — always your own department (Task 19 Part B: no
+                             cross-department admin authority, so this is never a real
+                             choice). The server ignores any department_id in the POST
+                             body regardless of what this shows. -->
+                        <input type="text" value="<?php echo h($myDepartmentName); ?>" disabled>
+                    </label>
+                    <label>Level
+                        <select name="level" required>
+                            <option value="">Select</option>
+                            <?php foreach ([100, 200, 300, 400] as $lvl): ?>
+                                <option value="<?php echo $lvl; ?>" <?php echo selected($editCourse['level'] ?? '', $lvl); ?>><?php echo $lvl; ?> Level</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
                     <label>Color
                         <div class="color-swatch-picker">
                             <?php
@@ -424,6 +493,9 @@ function section_type_label(string $t): string
                                 <h3 title="<?php echo h($c['title']); ?>"><?php echo h($c['title']); ?></h3>
                                 <p class="muted">
                                     <?php echo strtoupper(h($c['semester'])); ?> · <?php echo h($c['lecturer_name']); ?>
+                                    <?php if ($c['department_code']): ?>
+                                        · <?php echo h($c['department_code']); ?><?php echo $c['level'] ? ' ' . (int)$c['level'] . 'L' : ''; ?>
+                                    <?php endif; ?>
                                 </p>
                             </div>
                             <a class="btn primary"
@@ -434,7 +506,6 @@ function section_type_label(string $t): string
                     <?php endforeach; ?>
                 </div>
             </section>
-
 
         <?php else: ?>
             <!-- ═══════════════════════════════════════════════════════════════════════════

@@ -68,7 +68,12 @@ function time_ago(string $ts): string
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Notifications'; $extraCss = ['assets/calendar.css']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Notifications';
+    $extraCss = ['assets/calendar.css'];
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">

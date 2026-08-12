@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_login();
-ensure_chat_tables();
+// ensure_chat_tables() removed here — schema already established in
+// production. See config.php's ensure_chat_tables().
 
 $user     = current_user();
 $courseId = (int) ($_GET['course_id'] ?? 0);
@@ -429,16 +430,49 @@ foreach ($stuStmt->fetchAll() as $s) {
                 if (editBtn && !u.content) editBtn.remove();
             }
 
-            async function send(fileOverride) {
+            // Downscales an image attachment client-side (canvas) before it's
+            // sent — phone camera photos can be 4-8MB, and shrinking to
+            // ~1600px/JPEG here is what actually cuts upload time on a slow
+            // connection, since it's smaller before it ever hits the network
+            // (the server still re-compresses on arrival as a backstop).
+            // Falls back to the original file untouched if anything fails.
+            function resizeImageFile(file, maxDimension = 1600, quality = 0.8) {
+                return new Promise(resolve => {
+                    const img = new Image();
+                    const url = URL.createObjectURL(file);
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        const longest = Math.max(img.width, img.height);
+                        if (longest <= maxDimension) { resolve(file); return; }
+                        const scale = maxDimension / longest;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob(blob => {
+                            resolve(blob ? new File([blob], file.name, { type: blob.type || file.type }) : file);
+                        }, 'image/jpeg', quality);
+                    };
+                    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+                    img.src = url;
+                });
+            }
+
+            async function send(fileOverride, isVoiceNote) {
                 const text = input.value.trim();
-                const file = fileOverride || fileInput.files[0];
+                let file = fileOverride || fileInput.files[0];
                 if (!text && !file) return;
+                if (file && !isVoiceNote && file.type && file.type.startsWith('image/')) {
+                    file = await resizeImageFile(file);
+                }
                 sendBtn.disabled = true;
                 const fd = new FormData();
                 fd.append('type', 'group');
                 fd.append('target_id', <?php echo (int) $courseId; ?>);
                 fd.append('message', text);
                 if (file) fd.append('attachment', file, file.name || 'voice-note.webm');
+                if (isVoiceNote) fd.append('voice_note', '1');
 
                 try {
                     const res = await fetch('chat_send.php', { method: 'POST', body: fd });
@@ -664,21 +698,45 @@ foreach ($stuStmt->fetchAll() as $s) {
                 chatForm.hidden = false;
             }
 
+            // Prefer an audio-only container where the browser supports one —
+            // avoids relying on the video/mp4 fallback some mobile browsers
+            // (notably iOS Safari) silently use for audio-only recordings.
+            function pickVoiceMimeType() {
+                if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+                const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'];
+                for (const type of preferred) {
+                    if (MediaRecorder.isTypeSupported(type)) return type;
+                }
+                return '';
+            }
+
+            // iOS Safari reports (and finfo may sniff) an audio-only recording
+            // as an mp4/video container — save those as 'm4a', never 'mp4',
+            // so voice notes can never be confused with real video attachments
+            // server-side (see voice_note_extra_mime_types() in config.php).
+            function voiceFileExtension(mimeType) {
+                const type = (mimeType || '').toLowerCase();
+                if (type.includes('ogg')) return 'ogg';
+                if (type.includes('mp4') || type.includes('m4a')) return 'm4a';
+                return 'webm';
+            }
+
             if (voiceBtn && navigator.mediaDevices && window.MediaRecorder) {
                 voiceBtn.addEventListener('click', async function () {
                     try {
                         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                         recordedChunks = [];
                         cancelled = false;
-                        mediaRecorder = new MediaRecorder(stream);
+                        const preferredType = pickVoiceMimeType();
+                        mediaRecorder = preferredType ? new MediaRecorder(stream, { mimeType: preferredType }) : new MediaRecorder(stream);
                         mediaRecorder.ondataavailable = e => { if (e.data.size) recordedChunks.push(e.data); };
                         mediaRecorder.onstop = function () {
                             stopStream();
                             if (cancelled || !recordedChunks.length) return;
                             const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                            const ext = (mediaRecorder.mimeType || '').includes('ogg') ? 'ogg' : 'webm';
+                            const ext = voiceFileExtension(mediaRecorder.mimeType);
                             const file = new File([blob], 'voice-note.' + ext, { type: blob.type });
-                            send(file);
+                            send(file, true);
                         };
                         mediaRecorder.start();
                         chatForm.hidden = true;

@@ -19,11 +19,11 @@ if ($userId === 0 || empty($_SESSION['pwreset']['email_verified'])) {
     exit();
 }
 
-$body    = json_decode(file_get_contents('php://input'), true) ?? [];
-$answer  = trim((string) ($body['captcha'] ?? ''));
+$body  = json_decode(file_get_contents('php://input'), true) ?? [];
+$token = trim((string) ($body['recaptcha'] ?? ''));
 
-if ($answer === '' || !pr_captcha_verify($answer)) {
-    echo json_encode(['ok' => false, 'message' => 'Incorrect CAPTCHA. Please try again.']);
+if (!pr_recaptcha_verify($token)) {
+    echo json_encode(['ok' => false, 'message' => 'Security check failed. Please try again.']);
     exit();
 }
 

@@ -1,5 +1,9 @@
 # Credentials — never commit real config
 config.php
+.env
+.env.*
+!.env.example
+!.env.production.example
 
 # macOS metadata
 .DS_Store

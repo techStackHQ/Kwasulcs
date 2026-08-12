@@ -88,20 +88,11 @@ $supportMailto = 'mailto:' . MAIL_FROM_EMAIL . '?subject=' . rawurlencode('KWASU
                 <div class="auth-forgot-icon"><i class="bi bi-shield-lock-fill"></i></div>
                 <h2>Security Verification</h2>
                 <p class="muted">This extra step helps us stop automated password reset requests.</p>
-                <p class="reset-desc">Enter the characters shown below to continue.</p>
+                <p class="reset-desc">We run an automatic background security check — just click Continue.</p>
 
                 <div class="alert error" id="step3Error" hidden></div>
 
                 <form class="auth-form auth-form--reset" id="step3Form" autocomplete="off">
-                    <div class="captcha-box">
-                        <img src="fp_captcha_image.php" alt="CAPTCHA challenge" id="captchaImg" class="captcha-img">
-                        <button type="button" class="captcha-refresh" id="captchaRefresh" title="Get a new challenge"><i class="bi bi-arrow-clockwise"></i></button>
-                    </div>
-                    <div class="auth-input-wrap">
-                        <span class="auth-input-icon"><i class="bi bi-keyboard-fill"></i></span>
-                        <input type="text" id="captchaInput" required placeholder="Enter the characters above" autocomplete="off" autocapitalize="characters">
-                    </div>
-
                     <div class="reset-btn-row">
                         <button type="button" class="btn secondary" onclick="goToStep(2)"><i class="bi bi-arrow-left"></i> Back</button>
                         <button type="submit" class="btn primary auth-submit-btn" id="step3Submit">Verify <i class="bi bi-arrow-right"></i></button>
@@ -205,6 +196,7 @@ $supportMailto = 'mailto:' . MAIL_FROM_EMAIL . '?subject=' . rawurlencode('KWASU
         </div>
     </div>
 
+    <script src="https://www.google.com/recaptcha/api.js?render=<?php echo h(RECAPTCHA_SITE_KEY); ?>"></script>
     <script>
         const TOTAL_STEPS = 6;
         let currentStep = 1;
@@ -227,13 +219,18 @@ $supportMailto = 'mailto:' . MAIL_FROM_EMAIL . '?subject=' . rawurlencode('KWASU
 
         function goToStep(step) {
             currentStep = step;
-            if (step === 3) refreshCaptcha();
             showStep(step);
         }
 
-        function refreshCaptcha() {
-            document.getElementById('captchaImg').src = 'fp_captcha_image.php?t=' + Date.now();
-            document.getElementById('captchaInput').value = '';
+        const RECAPTCHA_SITE_KEY = '<?php echo h(RECAPTCHA_SITE_KEY); ?>';
+
+        function getRecaptchaToken() {
+            return new Promise(function (resolve, reject) {
+                if (!window.grecaptcha) { reject(new Error('reCAPTCHA failed to load.')); return; }
+                grecaptcha.ready(function () {
+                    grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'password_reset' }).then(resolve, reject);
+                });
+            });
         }
 
         function showError(id, message) {
@@ -303,16 +300,23 @@ $supportMailto = 'mailto:' . MAIL_FROM_EMAIL . '?subject=' . rawurlencode('KWASU
             }
         });
 
-        // ── Step 3: CAPTCHA (also triggers the code send) ───────────────────
-        document.getElementById('captchaRefresh').addEventListener('click', refreshCaptcha);
-
+        // ── Step 3: reCAPTCHA (also triggers the code send) ──────────────────
         document.getElementById('step3Form').addEventListener('submit', async function (e) {
             e.preventDefault();
             hideError('step3Error');
+
             const btn = document.getElementById('step3Submit');
             setLoading(btn, true, 'Verifying…');
             try {
-                const data = await postJson('fp_step3_captcha.php', { captcha: document.getElementById('captchaInput').value.trim() });
+                let token;
+                try {
+                    token = await getRecaptchaToken();
+                } catch (err) {
+                    showError('step3Error', 'Security check failed to load. Please refresh and try again.');
+                    return;
+                }
+
+                const data = await postJson('fp_step3_captcha.php', { recaptcha: token });
                 if (data.ok) {
                     goToStep(4);
                     sendCodeTransition(data.expires_in);
@@ -320,7 +324,6 @@ $supportMailto = 'mailto:' . MAIL_FROM_EMAIL . '?subject=' . rawurlencode('KWASU
                     location.href = 'forgot_password.php';
                 } else {
                     showError('step3Error', data.message);
-                    refreshCaptcha();
                 }
             } finally {
                 setLoading(btn, false);

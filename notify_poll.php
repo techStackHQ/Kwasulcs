@@ -27,20 +27,20 @@ try {
         $cronNow = date('Y-m-d H:i:s');
         $cronStmt = db()->prepare("
             SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_email, cn.sent_web,
-                   ce.title AS event_title, ce.start_datetime, ce.location,
+                   ce.title AS event_title, ce.event_type, ce.start_datetime, ce.location, ce.description,
                    ce.notify_email AS ev_notify_email, ce.notify_web AS ev_notify_web,
+                   c.code AS course_code,
                    u.email AS user_email, u.full_name AS user_name
             FROM calendar_notifications cn
             JOIN calendar_events ce ON ce.id = cn.event_id
             JOIN users u ON u.id = cn.user_id
+            LEFT JOIN courses c ON c.id = ce.course_id
             WHERE cn.scheduled_at <= ? AND (cn.sent_email = 0 OR cn.sent_web = 0)
             LIMIT 50
         ");
         $cronStmt->execute([$cronNow]);
 
         foreach ($cronStmt->fetchAll() as $cr) {
-            $fmt = date('D, d M Y \at g:i A', strtotime($cr['start_datetime']));
-
             // Web notification — claim first, then act (prevents duplicates
             // if this poll overlaps with a page-load auto-fire happening at
             // the same moment in another tab).
@@ -48,7 +48,7 @@ try {
                 $claimWeb = db()->prepare('UPDATE calendar_notifications SET sent_web=1 WHERE id=? AND sent_web=0');
                 $claimWeb->execute([$cr['notif_id']]);
                 if ($claimWeb->rowCount() > 0) {
-                    $msg = "Reminder: \"{$cr['event_title']}\" starts {$fmt}" . ($cr['location'] ? " @ {$cr['location']}" : "");
+                    $msg = reminder_short_message($cr);
                     db()->prepare('INSERT IGNORE INTO web_notifications (user_id, event_id, message) VALUES (?,?,?)')
                         ->execute([$cr['user_id'], $cr['event_id'], $msg]);
                     $fired++;
@@ -60,8 +60,7 @@ try {
                 $claimEmail = db()->prepare('UPDATE calendar_notifications SET sent_email=1 WHERE id=? AND sent_email=0');
                 $claimEmail->execute([$cr['notif_id']]);
                 if ($claimEmail->rowCount() > 0) {
-                    $html = "<div style='font-family:sans-serif;'><h2>📅 {$cr['event_title']}</h2><p><strong>When:</strong> {$fmt}</p>" .
-                        ($cr['location'] ? "<p><strong>Where:</strong> {$cr['location']}</p>" : "") . "</div>";
+                    $html   = reminder_email_html($cr);
                     $sendOk = send_mail($cr['user_email'], $cr['user_name'], "[KWASU LCS] Reminder: {$cr['event_title']}", $html);
                     if ($sendOk) {
                         $fired++;

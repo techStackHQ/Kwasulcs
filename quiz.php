@@ -24,6 +24,30 @@ $topicsStmt = db()->prepare('SELECT id, week_number, title FROM topics WHERE cou
 $topicsStmt->execute([$courseId]);
 $topics = $topicsStmt->fetchAll();
 
+// ── Optional per-week pre-selection (Task 25) ─────────────────────────────────
+// Arriving via course.php's per-week "Quiz" link passes ?topic=<id> so the
+// setup screen below lands with "Specific Week" already selected instead
+// of defaulting to "Whole Course" — cosmetic pre-fill only, NOT a security
+// boundary: ai_quiz.php itself already re-validates that topic_id actually
+// belongs to course_id server-side (WHERE course_id=? AND id=?) regardless
+// of what's passed here, so a mismatched/tampered id can't leak another
+// course's topic — it would just fail to match anything at generation
+// time. Validated here purely so the dropdown doesn't try to pre-select an
+// option value that isn't actually in it.
+$preselectTopicId = (int) ($_GET['topic'] ?? 0);
+if ($preselectTopicId > 0) {
+    $validPreselect = false;
+    foreach ($topics as $t) {
+        if ((int) $t['id'] === $preselectTopicId) {
+            $validPreselect = true;
+            break;
+        }
+    }
+    if (!$validPreselect) {
+        $preselectTopicId = 0;
+    }
+}
+
 // Ensure quiz tables exist
 try {
     db()->exec("CREATE TABLE IF NOT EXISTS quiz_sessions (
@@ -64,7 +88,11 @@ try {
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Quiz — ' . $course['code']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Quiz — ' . $course['code'];
+    include __DIR__ . '/partials/head.php'; ?>
     <style>
         /* ── Quiz-specific styles ─────────────────────────────────────── */
         .quiz-shell {
@@ -164,16 +192,37 @@ try {
         }
 
         .img-thumb {
-            position: relative; width: 84px; height: 84px;
-            border-radius: 10px; overflow: hidden; border: 2px solid #e2e8f0;
+            position: relative;
+            width: 84px;
+            height: 84px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
         }
-        .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+        .img-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
         .img-thumb .img-remove-btn {
-            position: absolute; top: 2px; right: 2px;
-            width: 20px; height: 20px; border-radius: 50%;
-            background: rgba(15,23,42,.75); color: #fff; border: none;
-            font-size: 12px; line-height: 1; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, .75);
+            color: #fff;
+            border: none;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .generate-btn {
@@ -305,42 +354,94 @@ try {
 
         .q-marks-badge {
             display: inline-block;
-            font-size: 11px; font-weight: 800;
-            padding: 3px 10px; border-radius: 999px;
-            background: #dcfce7; color: #166534;
-            margin-left: 8px; vertical-align: middle;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: #dcfce7;
+            color: #166534;
+            margin-left: 8px;
+            vertical-align: middle;
         }
 
         .question-diagram {
-            margin: 14px 0; text-align: center;
+            margin: 14px 0;
+            text-align: center;
         }
+
         .question-diagram img {
-            max-width: 100%; max-height: 380px;
-            border-radius: 12px; border: 1px solid #e2e8f0;
+            max-width: 100%;
+            max-height: 380px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
         }
 
         .marks-awarded-line {
-            margin-top: 14px; font-size: 14px; color: #334155;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #334155;
         }
-        .marks-awarded-line strong { color: var(--primary-dark); }
+
+        .marks-awarded-line strong {
+            color: var(--primary-dark);
+        }
 
         .breakdown-box {
-            margin-top: 14px; padding: 14px 16px;
-            background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;
+            margin-top: 14px;
+            padding: 14px 16px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
         }
-        .breakdown-title { font-weight: 800; font-size: 13px; margin-bottom: 10px; color: #334155; }
+
+        .breakdown-title {
+            font-weight: 800;
+            font-size: 13px;
+            margin-bottom: 10px;
+            color: #334155;
+        }
+
         .breakdown-item {
-            padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: 13px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 13px;
         }
-        .breakdown-item:last-child { border-bottom: none; }
+
+        .breakdown-item:last-child {
+            border-bottom: none;
+        }
+
         .breakdown-item-head {
-            display: flex; justify-content: space-between; gap: 10px;
-            font-weight: 600; color: #1e293b; margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
         }
-        .breakdown-row { display: flex; gap: 14px; font-size: 12px; margin-top: 4px; }
-        .bd-yes { color: #16a34a; font-weight: 700; }
-        .bd-no  { color: #dc2626; font-weight: 700; }
-        .breakdown-feedback { color: #64748b; font-size: 12px; margin-top: 4px; }
+
+        .breakdown-row {
+            display: flex;
+            gap: 14px;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .bd-yes {
+            color: #16a34a;
+            font-weight: 700;
+        }
+
+        .bd-no {
+            color: #dc2626;
+            font-weight: 700;
+        }
+
+        .breakdown-feedback {
+            color: #64748b;
+            font-size: 12px;
+            margin-top: 4px;
+        }
 
         .question-text {
             font-size: 17px;
@@ -643,7 +744,7 @@ try {
                     <label style="font-weight:700;font-size:14px;display:block;margin-bottom:8px;">Quiz Scope</label>
                     <div class="scope-tabs">
                         <button class="scope-tab active" onclick="setScope('course',this)"><i class="bi bi-journal-bookmark-fill icon"></i> Whole Course</button>
-                        <button class="scope-tab" onclick="setScope('topic',this)"><i class="bi bi-book-half icon"></i> Specific Week</button>
+                        <button class="scope-tab" id="scopeTabTopic" onclick="setScope('topic',this)"><i class="bi bi-book-half icon"></i> Specific Week</button>
                     </div>
 
                     <div id="topicPicker" style="display:none;margin-bottom:16px;">
@@ -716,7 +817,7 @@ try {
                 <div class="quiz-loading">
                     <div class="spinner"></div>
                     <h2 style="margin:0 0 8px;">Generating your quiz…</h2>
-                    <p class="muted">The AI is reading the course materials and crafting questions. This takes 15–30 seconds.</p>
+                    <p class="muted" id="quizLoadingStatus">Reading course materials…</p>
                 </div>
             </div>
 
@@ -730,6 +831,17 @@ try {
                 </div>
                 <div id="questionArea"></div>
                 <div class="quiz-nav" id="quizNav"></div>
+            </div>
+
+            <!-- ── Submitting (grading can take a real, noticeable amount of time for
+                 theory-heavy quizzes — this replaces what used to be no loading
+                 indicator at all during submission) ──────────────────────────────── -->
+            <div id="submittingSection" style="display:none;">
+                <div class="quiz-loading">
+                    <div class="spinner"></div>
+                    <h2 style="margin:0 0 8px;">Grading your quiz…</h2>
+                    <p class="muted" id="submitLoadingStatus">Submitting your answers…</p>
+                </div>
             </div>
 
             <!-- ── Results ───────────────────────────────────────────────────────── -->
@@ -757,6 +869,18 @@ try {
             document.getElementById('topicPicker').style.display = s === 'topic' ? 'block' : 'none';
         }
 
+        // ── Pre-select "Specific Week" from a per-week "Quiz" link (Task 25) ────────────
+        // Lands on the normal setup screen with the week already chosen — count
+        // slider, question type, and image upload all stay fully available;
+        // generation only starts when the student clicks "Generate Quiz" as
+        // usual. A student arriving at quiz.php normally (no ?topic= param)
+        // sees the unchanged "Whole Course" default.
+        const PRESELECT_TOPIC_ID = <?php echo $preselectTopicId; ?>;
+        if (PRESELECT_TOPIC_ID > 0) {
+            setScope('topic', document.getElementById('scopeTabTopic'));
+            document.getElementById('topicSelect').value = String(PRESELECT_TOPIC_ID);
+        }
+
         // ── Question type toggle ──────────────────────────────────────────────────────
         function setQuestionType(t, btn) {
             questionType = t;
@@ -765,7 +889,41 @@ try {
         }
 
         // ── Image upload (up to 5) ───────────────────────────────────────────────────────
-        function handleImages(input) {
+        // Downscales client-side (canvas) before it's turned into base64 —
+        // these are usually full-size phone photos of past-question papers,
+        // and shrinking to ~1600px/JPEG here cuts the upload payload well
+        // before it hits the network. Falls back to the original file as-is
+        // if anything about the resize fails.
+        function resizeImageToDataUrl(file, maxDimension = 1600, quality = 0.8) {
+            return new Promise(resolve => {
+                const readOriginal = () => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(file);
+                };
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    const longest = Math.max(img.width, img.height);
+                    const canvas = document.createElement('canvas');
+                    const scale = longest > maxDimension ? maxDimension / longest : 1;
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    readOriginal();
+                };
+                img.src = url;
+            });
+        }
+
+        async function handleImages(input) {
             const files = Array.from(input.files || []);
             if (!files.length) return;
 
@@ -777,16 +935,11 @@ try {
             }
             const toAdd = files.slice(0, room);
 
-            let loaded = 0;
-            toAdd.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = e => {
-                    imagesB64.push(e.target.result);
-                    loaded++;
-                    if (loaded === toAdd.length) renderImageGrid();
-                };
-                reader.readAsDataURL(file);
-            });
+            for (const file of toAdd) {
+                const b64 = await resizeImageToDataUrl(file);
+                if (b64) imagesB64.push(b64);
+            }
+            renderImageGrid();
             input.value = '';
         }
 
@@ -803,9 +956,9 @@ try {
                     <button class="img-remove-btn" onclick="removeImage(${i})" title="Remove">✕</button>
                 </div>
             `).join('');
-            document.getElementById('imageLabel').innerHTML = imagesB64.length
-                ? `<i class="bi bi-check-circle-fill icon"></i> ${imagesB64.length} image(s) loaded — ${5 - imagesB64.length} slot(s) remaining`
-                : 'Upload past question papers for style matching, or diagrams the AI can attach to relevant questions';
+            document.getElementById('imageLabel').innerHTML = imagesB64.length ?
+                `<i class="bi bi-check-circle-fill icon"></i> ${imagesB64.length} image(s) loaded — ${5 - imagesB64.length} slot(s) remaining` :
+                'Upload past question papers for style matching, or diagrams the AI can attach to relevant questions';
         }
 
         // ── Generate quiz ─────────────────────────────────────────────────────────────
@@ -817,6 +970,18 @@ try {
             btn.disabled = true;
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('loadingSection').style.display = 'block';
+
+            // Quiz pacing (Task 24) — deliberately slower/smoother than AI
+            // chat's loader (2000ms/message + 600ms cross-dissolve fade,
+            // ~6s per full loop of these 3 messages) since generation
+            // realistically takes 20-80s+, not the few seconds chat
+            // typically takes. This LOOPS for as long as stopStatusCycler()
+            // hasn't been called yet — it does not run out after one pass.
+            const stopStatusCycler = startStatusCycler(document.getElementById('quizLoadingStatus'), [
+                'Reading course materials…',
+                'Generating questions…',
+                'Finalizing your quiz…',
+            ], 2000, 600);
 
             try {
                 const res = await fetch('ai_quiz.php', {
@@ -841,10 +1006,12 @@ try {
                 currentQ = 0;
                 submitted = false;
 
+                stopStatusCycler();
                 document.getElementById('loadingSection').style.display = 'none';
                 document.getElementById('quizSection').style.display = 'block';
                 renderQuestion();
             } catch (err) {
+                stopStatusCycler();
                 document.getElementById('loadingSection').style.display = 'none';
                 document.getElementById('setupSection').style.display = 'block';
                 btn.disabled = false;
@@ -974,6 +1141,17 @@ try {
             });
             if (unanswered.length > 0 && !confirm(`${unanswered.length} question(s) unanswered. Submit anyway?`)) return;
 
+            document.getElementById('quizSection').style.display = 'none';
+            document.getElementById('submittingSection').style.display = 'block';
+
+            // Same quiz pacing as generation above (Task 24) — loops
+            // continuously for as long as grading is still pending.
+            const stopStatusCycler = startStatusCycler(document.getElementById('submitLoadingStatus'), [
+                'Reviewing your answers…',
+                'Marking your responses…',
+                'Calculating final marks…',
+            ], 2000, 600);
+
             try {
                 const res = await fetch('ai_quiz_submit.php', {
                     method: 'POST',
@@ -987,6 +1165,9 @@ try {
                 });
                 const data = await res.json();
                 if (!res.ok || data.error) throw new Error(data.error || 'Submit failed');
+
+                stopStatusCycler();
+                document.getElementById('submittingSection').style.display = 'none';
 
                 // Merge results back into questions for display
                 submitted = true;
@@ -1007,10 +1188,14 @@ try {
                 quizData._results = data;
 
                 // Show results from question 1
+                document.getElementById('quizSection').style.display = 'block';
                 currentQ = 0;
                 renderQuestion();
                 showResultsBanner(data);
             } catch (err) {
+                stopStatusCycler();
+                document.getElementById('submittingSection').style.display = 'none';
+                document.getElementById('quizSection').style.display = 'block';
                 alert('Could not submit: ' + err.message);
             }
         }

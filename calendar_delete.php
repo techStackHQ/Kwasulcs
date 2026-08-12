@@ -31,8 +31,12 @@ try {
         throw new RuntimeException('Event not found.');
     }
 
-    // Permission: staff can delete course/global events; users can delete their own
-    $canDelete = $isStaff || (int) $event['created_by'] === (int) $user['id'];
+    // The event's own creator can always delete it; beyond that, staff can
+    // only delete course/global events within their OWN department — see
+    // cal_user_can_manage_event() in config.php (Task 19 Part B: no
+    // cross-department admin authority).
+    $canDelete = (int) $event['created_by'] === (int) $user['id']
+        || ($isStaff && cal_user_can_manage_event($event, $user));
     if (!$canDelete) {
         throw new RuntimeException('You do not have permission to delete this event.');
     }

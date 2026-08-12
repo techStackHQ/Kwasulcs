@@ -116,8 +116,12 @@ try {
             throw new RuntimeException('Event not found.');
         }
 
-        // Staff can edit any course/global event; users can only edit their own personal
-        $canEdit = $isStaff || (int) $existing['created_by'] === (int) $user['id'];
+        // The event's own creator can always edit it; beyond that, staff can
+        // only edit course/global events within their OWN department — not
+        // blanket "any staff can edit any event" any more (Task 19 Part B:
+        // no cross-department admin authority).
+        $canEdit = (int) $existing['created_by'] === (int) $user['id']
+            || ($isStaff && cal_user_can_manage_event($existing, $user));
         if (!$canEdit) {
             throw new RuntimeException('You do not have permission to edit this event.');
         }
@@ -151,6 +155,24 @@ try {
 
         // Reschedule notification
         reschedule_notification($eventId, $startTS, $remindMins, (int) $user['id'], $notifyEmail, $notifyWeb);
+
+        // Task 6 — a fresh, immediate "Event Updated" notice, separate from
+        // the scheduled reminder rescheduled just above. Built from the
+        // just-saved values rather than re-querying, since they're already
+        // validated/normalised in scope here.
+        send_event_update_notification([
+            'id'             => $eventId,
+            'title'          => $title,
+            'event_type'     => $eventType,
+            'scope'          => $scope,
+            'course_id'      => $courseId,
+            'start_datetime' => $startDT,
+            'location'       => $location,
+            'description'    => $description,
+            'notify_email'   => $notifyEmail,
+            'notify_web'     => $notifyWeb,
+            'created_by'     => (int) $existing['created_by'],
+        ], $user);
 
         flash_and_redirect('cal_flash', 'Event updated.', $redirect);
     } else {
@@ -223,8 +245,22 @@ function collect_audience(int $creatorId, string $scope, ?int $courseId): array
         return array_unique($ids);
     }
     if ($scope === 'global') {
-        $rows = db()->query('SELECT id FROM users')->fetchAll(PDO::FETCH_COLUMN);
-        return array_map('intval', $rows);
+        // Department-wide broadcast, NOT literally every user in the system
+        // (Task 19 Part B) — "global" predates department support and used
+        // to mean "everyone", but that let one department's admin notify
+        // every other department's users, which is exactly the cross-
+        // department authority this task closes. Scoped to the creator's
+        // own department instead — see cal_user_can_manage_event() in
+        // config.php for the matching edit/delete-permission scoping.
+        $stmt = db()->prepare('SELECT department_id FROM users WHERE id = ?');
+        $stmt->execute([$creatorId]);
+        $creatorDept = $stmt->fetchColumn();
+        if (!$creatorDept) {
+            return [$creatorId];
+        }
+        $rows = db()->prepare('SELECT id FROM users WHERE department_id = ?');
+        $rows->execute([$creatorDept]);
+        return array_map('intval', $rows->fetchAll(PDO::FETCH_COLUMN));
     }
     return [$creatorId];
 }
@@ -350,11 +386,23 @@ function schedule_notification(
     ');
 
     foreach ($occurrences as $occTS) {
-        $fireAt = date('Y-m-d H:i:s', $occTS - ($remindMins * 60));
-        // Skip only if the fire time is more than 60s in the past — a small
-        // grace window so a reminder calculated to fire "now" (e.g. a test
-        // event set only 1-2 minutes out) isn't dropped by request timing.
-        if (strtotime($fireAt) < time() - 60) continue;
+        // The occurrence itself must still be ahead of us — if it's already
+        // happened there is genuinely nothing left to remind anyone about,
+        // so this (and only this) is a real "skip" condition.
+        if ($occTS <= time()) {
+            continue;
+        }
+
+        // The naive "N minutes before" moment can itself already be in the
+        // past (e.g. a 30-min-before reminder for an event starting in 20
+        // minutes, or an event edited after its original reminder moment
+        // already elapsed). That does NOT mean the reminder should be
+        // dropped — the event hasn't happened yet, so clamp the fire time
+        // up to "now" instead of skipping, so the very next poll/cron cycle
+        // sends it immediately rather than never at all.
+        $computedFireTS = $occTS - ($remindMins * 60);
+        $fireAt = date('Y-m-d H:i:s', max($computedFireTS, time()));
+
         foreach ($userIds as $uid) {
             $ins->execute([$eventId, $uid, $fireAt]);
         }
@@ -389,4 +437,68 @@ function reschedule_notification(
         $email,
         $web
     );
+}
+
+/**
+ * Task 6 — immediate "Event Updated" notice, sent once at edit time.
+ *
+ * Deliberately separate from schedule_notification()/calendar_notifications:
+ * this is a single, synchronous send triggered directly by one edit POST
+ * request, not a polled/claimed row — there's no concurrent-firing race to
+ * guard against here the way there is for the cron/poll-driven reminder
+ * system, so no atomic claim is needed (or possible, since there's no
+ * pre-existing row to claim against).
+ *
+ * Reuses collect_audience() — the same recipients who'd get a reminder for
+ * this event — minus the editor themselves (they already know what they
+ * just changed).
+ */
+function send_event_update_notification(array $ev, array $editedBy): void
+{
+    if (!$ev['notify_email'] && !$ev['notify_web']) {
+        return; // notifications disabled for this event — respect that here too
+    }
+
+    $courseCode = null;
+    if (!empty($ev['course_id'])) {
+        $c = db()->prepare('SELECT code FROM courses WHERE id = ?');
+        $c->execute([$ev['course_id']]);
+        $courseCode = $c->fetchColumn() ?: null;
+    }
+
+    $row = [
+        'event_title'    => $ev['title'],
+        'event_type'     => $ev['event_type'],
+        'start_datetime' => $ev['start_datetime'],
+        'location'       => $ev['location'],
+        'description'    => $ev['description'],
+        'course_code'    => $courseCode,
+    ];
+
+    $userIds = collect_audience($ev['created_by'], $ev['scope'], $ev['course_id']);
+    $userIds = array_diff($userIds, [(int) $editedBy['id']]);
+    if (!$userIds) {
+        return;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+    $stmt = db()->prepare("
+        SELECT id, email, full_name, pref_email_notifications, pref_web_notifications
+        FROM users WHERE id IN ($placeholders)
+    ");
+    $stmt->execute(array_values($userIds));
+    $recipients = $stmt->fetchAll();
+
+    $subject = "[KWASU LCS] Event Updated: {$ev['title']}";
+    $html    = event_update_email_html($row);
+
+    foreach ($recipients as $u) {
+        if ($ev['notify_web'] && $u['pref_web_notifications']) {
+            db()->prepare('INSERT INTO web_notifications (user_id, event_id, message) VALUES (?, ?, ?)')
+                ->execute([$u['id'], $ev['id'], event_update_short_message($row)]);
+        }
+        if ($ev['notify_email'] && $u['email'] && $u['pref_email_notifications']) {
+            send_mail($u['email'], $u['full_name'], $subject, $html);
+        }
+    }
 }

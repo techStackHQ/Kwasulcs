@@ -1,7 +1,9 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_login();
-ensure_chat_tables();
+// ensure_chat_tables() removed here — schema already established in
+// production; this endpoint was re-running ~11 CREATE/ALTER TABLE
+// statements on every request. See config.php's ensure_chat_tables().
 
 $user = current_user();
 $role = $user['role'];
@@ -62,7 +64,12 @@ if ($role === 'student') {
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Chat'; $extraCss = ['assets/chat.css']; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Chat';
+    $extraCss = ['assets/chat.css'];
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
@@ -165,15 +172,15 @@ if ($role === 'student') {
     </main>
 
     <script>
-        (function () {
+        (function() {
             var input = document.getElementById('groupSearchInput');
             var rows = document.querySelectorAll('#groupList .chat-list-row');
             var noResults = document.getElementById('groupNoResults');
             if (!input) return;
-            input.addEventListener('input', function () {
+            input.addEventListener('input', function() {
                 var q = input.value.trim().toLowerCase();
                 var anyVisible = false;
-                rows.forEach(function (row) {
+                rows.forEach(function(row) {
                     var match = !q || (row.dataset.search || '').includes(q);
                     row.hidden = !match;
                     if (match) anyVisible = true;

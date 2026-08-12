@@ -73,6 +73,27 @@ if (!is_file($abs)) {
 $ext      = strtolower(pathinfo($abs, PATHINFO_EXTENSION));
 $safeName = preg_replace('/[^A-Za-z0-9._-]+/', '_', $fileName ?: basename($abs)) . '.' . $ext;
 
+// ── Unified preview via PDF conversion (Task 26) ──────────────────────────────
+// DOCX/DOC/PPT/PPTX get converted to PDF (cached — see
+// convert_office_to_pdf_cached() in config.php) and previewed through the
+// SAME PDF.js viewer path as native PDFs below, IF LibreOffice is actually
+// available on this host — never assumed, checked at runtime, same
+// principle as the Ghostscript detection this mirrors. $previewAbs/
+// $previewExt describe what actually gets RENDERED for viewing; $abs/$ext
+// (left untouched) still describe the real uploaded file and drive
+// downloads, filenames, and — when conversion isn't available or fails —
+// the exact pre-existing DOCX-parser/PPT-placeholder fallback below,
+// completely unchanged.
+$previewAbs = $abs;
+$previewExt = $ext;
+if (in_array($ext, ['docx', 'doc', 'ppt', 'pptx'], true)) {
+    $converted = convert_office_to_pdf_cached($abs);
+    if ($converted !== null) {
+        $previewAbs = $converted;
+        $previewExt = 'pdf';
+    }
+}
+
 $inlineMimes = [
     'pdf'  => 'application/pdf',
     'txt'  => 'text/plain',
@@ -83,9 +104,13 @@ $inlineMimes = [
     'webp' => 'image/webp',
 ];
 
-// Inline-viewable types open in browser; everything else shows a preview page
-$canInline = isset($inlineMimes[$ext]);
-$mime      = $inlineMimes[$ext] ?? 'application/octet-stream';
+// Inline-viewable types open in browser; everything else shows a preview
+// page. Driven by $previewExt so a successfully-converted DOCX/PPT is
+// treated exactly like a native PDF from here on — a failed/unavailable
+// conversion leaves $previewExt === $ext, so this resolves exactly as it
+// did before this feature existed.
+$canInline = isset($inlineMimes[$previewExt]);
+$mime      = $inlineMimes[$previewExt] ?? 'application/octet-stream';
 $fileSize  = filesize($abs);
 
 // ── For non-inline types with ?view=1 ────────────────────────────────────────
@@ -377,9 +402,17 @@ if ($inline && !$canInline) {
 
         <head>
             <meta charset="UTF-8">
+            <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+            <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+            <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
             <meta name="viewport" content="width=device-width,initial-scale=1">
             <title><?php echo h($fileName); ?> — KWASU LCS</title>
-            <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
+            <script>
+                (function() {
+                    var t = localStorage.getItem('theme');
+                    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme:dark)').matches)) document.documentElement.setAttribute('data-theme', 'dark')
+                })();
+            </script>
             <link rel="stylesheet" href="assets/style.css">
             <script src="assets/theme.js" defer></script>
             <style>
@@ -542,9 +575,12 @@ if ($inline && !$canInline) {
 
     // ── All other non-viewable types (PPTX, ZIP etc.) ─────────────────────────
     $iconMap = [
-        'ppt' => '<i class="bi bi-file-earmark-ppt-fill"></i>', 'pptx' => '<i class="bi bi-file-earmark-ppt-fill"></i>',
-        'zip' => '<i class="bi bi-file-earmark-zip-fill"></i>', 'rar' => '<i class="bi bi-file-earmark-zip-fill"></i>',
-        'xls' => '<i class="bi bi-file-earmark-excel-fill"></i>', 'xlsx' => '<i class="bi bi-file-earmark-excel-fill"></i>',
+        'ppt' => '<i class="bi bi-file-earmark-ppt-fill"></i>',
+        'pptx' => '<i class="bi bi-file-earmark-ppt-fill"></i>',
+        'zip' => '<i class="bi bi-file-earmark-zip-fill"></i>',
+        'rar' => '<i class="bi bi-file-earmark-zip-fill"></i>',
+        'xls' => '<i class="bi bi-file-earmark-excel-fill"></i>',
+        'xlsx' => '<i class="bi bi-file-earmark-excel-fill"></i>',
     ];
     $icon    = $iconMap[$ext] ?? '<i class="bi bi-file-earmark-fill"></i>';
     $typeLabels = [
@@ -562,9 +598,17 @@ if ($inline && !$canInline) {
 
     <head>
         <meta charset="UTF-8">
+        <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <title><?php echo h($fileName); ?> — KWASU LCS</title>
-        <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
+        <script>
+            (function() {
+                var t = localStorage.getItem('theme');
+                if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme:dark)').matches)) document.documentElement.setAttribute('data-theme', 'dark')
+            })();
+        </script>
         <link rel="stylesheet" href="assets/style.css">
         <script src="assets/theme.js" defer></script>
     </head>
@@ -612,23 +656,36 @@ header('X-Content-Type-Options: nosniff');
 
 // ── Stream mode: serves raw PDF bytes for PDF.js to fetch ───────────────────
 // Called internally by the PDF.js viewer page — same auth check applies.
-if (isset($_GET['stream']) && $_GET['stream'] === '1' && $ext === 'pdf') {
+// Streams from $previewAbs (the converted PDF for a DOCX/PPT, or the
+// original file when it's already a native PDF) — its own byte size, not
+// the original file's, since those can legitimately differ.
+if (isset($_GET['stream']) && $_GET['stream'] === '1' && $previewExt === 'pdf') {
+    $previewFileSize = filesize($previewAbs);
     header('Content-Type: application/pdf');
-    header('Content-Length: ' . $fileSize);
+    header('Content-Length: ' . $previewFileSize);
     header('Cache-Control: private, max-age=3600');
     header('Accept-Ranges: bytes');
-    readfile($abs);
+    readfile($previewAbs);
     exit();
 }
 
 if ($inline && $canInline) {
-    // ── PDF: serve via PDF.js viewer for best rendering of all PDF types ─────
-    if ($ext === 'pdf') {
+    // ── PDF (native or converted from DOCX/PPT): serve via PDF.js viewer ─────
+    if ($previewExt === 'pdf') {
         $sizeLabel = $fileSize > 1048576
             ? round($fileSize / 1048576, 1) . ' MB'
             : round($fileSize / 1024) . ' KB';
-        // The PDF is streamed via ?stream=1 — no base64 encoding needed
+        // The PDF is streamed via ?stream=1 — no base64 encoding needed.
+        // That follow-up request independently re-runs the same
+        // conversion-or-cache-hit logic above, so it resolves to this
+        // exact same file.
         $streamUrl = "download.php?type=" . urlencode($type) . "&id={$id}&stream=1";
+        $previewTypeLabel = match (true) {
+            $ext === 'pdf' => 'PDF Document',
+            in_array($ext, ['docx', 'doc'], true) => 'Word Document (PDF preview)',
+            in_array($ext, ['ppt', 'pptx'], true) => 'PowerPoint Presentation (PDF preview)',
+            default => 'PDF Document',
+        };
     ?>
         <!DOCTYPE html>
         <html lang="en">
@@ -637,7 +694,12 @@ if ($inline && $canInline) {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title><?php echo htmlspecialchars($fileName); ?> — KWASU LCS</title>
-            <script>(function(){var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.setAttribute('data-theme','dark')})();</script>
+            <script>
+                (function() {
+                    var t = localStorage.getItem('theme');
+                    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme:dark)').matches)) document.documentElement.setAttribute('data-theme', 'dark')
+                })();
+            </script>
             <link rel="stylesheet" href="assets/style.css">
             <script src="assets/theme.js" defer></script>
             <style>
@@ -791,7 +853,7 @@ if ($inline && $canInline) {
             <div class="pdf-topbar">
                 <div>
                     <h2><?php echo htmlspecialchars($fileName); ?></h2>
-                    <p>PDF Document · <?php echo $sizeLabel; ?></p>
+                    <p><?php echo htmlspecialchars($previewTypeLabel); ?> · <?php echo $sizeLabel; ?></p>
                 </div>
                 <div class="pdf-topbar-btns">
                     <a class="pdf-btn dl"

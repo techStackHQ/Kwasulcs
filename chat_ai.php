@@ -85,7 +85,13 @@ $__chatActiveId   = 0;
                 addMessage(text, 'me');
                 input.value = '';
                 sendBtn.disabled = true;
-                const thinking = addMessage('Thinking…', 'bot thinking');
+                const thinking = addMessage('Reading your question…', 'bot thinking');
+                const stopThinkingCycler = startStatusCycler(thinking, [
+                    'Reading your question…',
+                    'Searching course materials…',
+                    'Thinking…',
+                    'Composing a response…',
+                ]);
                 try {
                     const res = await fetch('ai_chat.php', {
                         method: 'POST',
@@ -93,6 +99,7 @@ $__chatActiveId   = 0;
                         body: JSON.stringify({ action: 'send', message: text, course_id: 0, session_id: sessionId })
                     });
                     const data = await res.json();
+                    stopThinkingCycler();
                     thinking.remove();
                     if (data.reply) {
                         if (data.session_id) sessionId = data.session_id;
@@ -101,6 +108,7 @@ $__chatActiveId   = 0;
                         addMessage('Sorry, something went wrong: ' + (data.error || 'Unknown error'), 'bot');
                     }
                 } catch (e) {
+                    stopThinkingCycler();
                     thinking.remove();
                     addMessage('Could not reach the AI assistant. Please try again.', 'bot');
                 } finally {

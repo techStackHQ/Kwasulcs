@@ -34,8 +34,13 @@ $todayFull      = date('Y-m-d');
 $filterCourseId = (int) ($_GET['course'] ?? 0);
 
 // ── Load courses the user can see ─────────────────────────────────────────────
+// Department-scoped for admins too (Task 19 Part B) — an admin no longer
+// sees every course system-wide, only their own department's, same as the
+// admin.php course-management view.
 if ($role === 'admin') {
-    $myCourses = db()->query('SELECT id, code, title FROM courses ORDER BY code')->fetchAll();
+    $s = db()->prepare('SELECT id, code, title FROM courses WHERE department_id = ? ORDER BY code');
+    $s->execute([$user['department_id'] ?? 0]);
+    $myCourses = $s->fetchAll();
 } elseif ($role === 'lecturer') {
     $s = db()->prepare('SELECT id, code, title FROM courses WHERE lecturer_id = ? ORDER BY code');
     $s->execute([$user['id']]);
@@ -58,7 +63,13 @@ $endStr       = date('Y-m-d 23:59:59', $monthEnd);
 $whereClauses = [];
 $params       = [];
 
-$whereClauses[] = "(e.scope = 'global')";
+// "global" events are department-wide, not literally system-wide (Task 19
+// Part B — see the matching note in calendar_save.php's collect_audience()
+// for why) — a viewer only sees a global event if its CREATOR belongs to
+// their own department, via the cu (creating user) join added to the main
+// query below.
+$whereClauses[] = "(e.scope = 'global' AND cu.department_id = ?)";
+$params[]       = $user['department_id'] ?? 0;
 
 if ($myCourseIds) {
     $inPH = implode(',', array_fill(0, count($myCourseIds), '?'));
@@ -84,6 +95,7 @@ $evtStmt = db()->prepare("
     SELECT e.*, c.code AS course_code
     FROM calendar_events e
     LEFT JOIN courses c ON c.id = e.course_id
+    LEFT JOIN users cu ON cu.id = e.created_by
     WHERE ($whereSQL)
       AND (
           -- Non-recurring: must overlap with this month
@@ -230,76 +242,50 @@ foreach ($allEvents as $ev) {
     }
 }
 
-// ── Auto-fire pending notifications on page load (XAMPP-friendly) ────────────
-// On a real server use a cron job instead. This runs silently in the background.
+// ── Auto-fire pending WEB notifications on page load ──────────────────────────
+// Email sending was removed from this page-render path — it used to call
+// send_mail() synchronously here, which could block calendar rendering on a
+// slow/blocked SMTP connection. Web notifications stay here (fast, DB-only,
+// no network call). Email firing now happens via notify_poll.php's
+// background poll (async, doesn't block page paint) and notify_cron.php (a
+// real cron job, if configured on the host) — both cover the exact same due
+// rows via the same atomic-claim pattern, so nothing is lost.
 try {
     $dueCount = db()->prepare("
         SELECT COUNT(*) FROM calendar_notifications
-        WHERE scheduled_at <= NOW() AND (sent_web = 0 OR sent_email = 0)
+        WHERE scheduled_at <= NOW() AND sent_web = 0
     ");
     $dueCount->execute();
     if ((int)$dueCount->fetchColumn() > 0) {
-        // Fire notifications inline — suppresses output
-        ob_start();
         $cronNow = date('Y-m-d H:i:s');
         $cronStmt = db()->prepare("
-            SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_email, cn.sent_web,
-                   ce.title AS event_title, ce.event_type, ce.start_datetime, ce.location,
-                   ce.notify_email AS ev_notify_email, ce.notify_web AS ev_notify_web,
-                   u.email AS user_email, u.full_name AS user_name
+            SELECT cn.id AS notif_id, cn.event_id, cn.user_id, cn.sent_web,
+                   ce.title AS event_title, ce.event_type, ce.start_datetime, ce.location, ce.description,
+                   ce.notify_web AS ev_notify_web,
+                   c.code AS course_code
             FROM calendar_notifications cn
             JOIN calendar_events ce ON ce.id = cn.event_id
             JOIN users u ON u.id = cn.user_id
-            WHERE cn.scheduled_at <= ? AND (cn.sent_email = 0 OR cn.sent_web = 0)
+            LEFT JOIN courses c ON c.id = ce.course_id
+            WHERE cn.scheduled_at <= ? AND cn.sent_web = 0
             ORDER BY cn.scheduled_at ASC LIMIT 50
         ");
         $cronStmt->execute([$cronNow]);
         foreach ($cronStmt->fetchAll() as $cronRow) {
-            $cronFmt = date('D, d M Y \\at g:i A', strtotime($cronRow['start_datetime']));
-
-            // ── Web notification: claim FIRST, then act ───────────────────────
-            // CRITICAL FIX: previously this inserted the web notification and
-            // sent the email BEFORE marking sent_web/sent_email = 1. If two
-            // requests ran this block within the same brief window (two tabs,
-            // a page load racing a background fetch, etc.) — before either had
-            // finished updating the row — both would see sent_email = 0 and
-            // both would send. Claiming the row atomically first (an UPDATE
-            // that only succeeds if sent_web/sent_email is still 0) means only
-            // ONE concurrent request can ever win; the other's UPDATE affects
-            // 0 rows and it correctly skips sending.
+            // Claim FIRST, then act — an UPDATE that only succeeds if
+            // sent_web is still 0 means only ONE concurrent request (two
+            // tabs, a page load racing the background poll, etc.) can ever
+            // win; the other's UPDATE affects 0 rows and correctly skips.
             if (!$cronRow['sent_web'] && $cronRow['ev_notify_web']) {
                 $claimWeb = db()->prepare('UPDATE calendar_notifications SET sent_web = 1 WHERE id = ? AND sent_web = 0');
                 $claimWeb->execute([$cronRow['notif_id']]);
                 if ($claimWeb->rowCount() > 0) {
-                    $cronMsg = "Reminder: \"{$cronRow['event_title']}\" starts {$cronFmt}";
-                    if ($cronRow['location']) $cronMsg .= " @ {$cronRow['location']}";
+                    $cronMsg = reminder_short_message($cronRow);
                     db()->prepare('INSERT IGNORE INTO web_notifications (user_id, event_id, message) VALUES (?,?,?)')
                         ->execute([$cronRow['user_id'], $cronRow['event_id'], $cronMsg]);
                 }
             }
-
-            // ── Email notification: claim FIRST, then act ─────────────────────
-            if (!$cronRow['sent_email'] && $cronRow['ev_notify_email'] && $cronRow['user_email']) {
-                $claimEmail = db()->prepare('UPDATE calendar_notifications SET sent_email = 1 WHERE id = ? AND sent_email = 0');
-                $claimEmail->execute([$cronRow['notif_id']]);
-                if ($claimEmail->rowCount() > 0) {
-                    $cronSubject = "[KWASU LCS] Reminder: {$cronRow['event_title']}";
-                    $cronHtml = "<div style='font-family:sans-serif;'><h2>📅 {$cronRow['event_title']}</h2>
-                        <p><strong>When:</strong> {$cronFmt}</p>" .
-                        ($cronRow['location'] ? "<p><strong>Where:</strong> {$cronRow['location']}</p>" : "") .
-                        "<p style='color:#64748b;font-size:13px;'>KWASU LCS automated reminder.</p></div>";
-                    $sendOk = send_mail($cronRow['user_email'], $cronRow['user_name'], $cronSubject, $cronHtml);
-                    if (!$sendOk) {
-                        // Sending genuinely failed — release the claim so it
-                        // can be retried on the next page load instead of
-                        // being permanently (and incorrectly) marked as sent.
-                        db()->prepare('UPDATE calendar_notifications SET sent_email = 0 WHERE id = ?')
-                            ->execute([$cronRow['notif_id']]);
-                    }
-                }
-            }
         }
-        ob_end_clean();
     }
 } catch (\Throwable $e) { /* silent fail — don't break the page */
 }
@@ -332,60 +318,31 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
 <html lang="en">
 
 <head>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
     <?php $pageTitle = 'Calendar';
     $extraCss = ['assets/calendar.css'];
     include __DIR__ . '/partials/head.php'; ?>
     <style>
-        /* ── Custom time inputs ─────────────────────────────────────────── */
+        /* ── Time input ──────────────────────────────────────────────────── */
         .time-input-wrap {
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            display: block;
+            width: 100%;
             background: var(--panel);
             border: 1px solid var(--line);
             border-radius: 14px;
             padding: 10px 14px;
+            font: inherit;
+            font-weight: 700;
+            color: var(--text);
             transition: border-color .15s, box-shadow .15s;
         }
 
-        .time-input-wrap:focus-within {
+        .time-input-wrap:focus {
+            outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(7, 167, 1, .15);
-        }
-
-        .time-part {
-            width: 44px;
-            border: none !important;
-            outline: none !important;
-            padding: 0 !important;
-            border-radius: 0 !important;
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text);
-            text-align: center;
-            background: transparent;
-        }
-
-        .time-part::-webkit-inner-spin-button,
-        .time-part::-webkit-outer-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-
-        .time-colon {
-            font-size: 20px;
-            font-weight: 900;
-            color: var(--text);
-            line-height: 1;
-            padding: 0 2px;
-        }
-
-        .time-ampm {
-            font-size: 12px;
-            font-weight: 800;
-            color: var(--primary-dark);
-            min-width: 26px;
-            text-align: right;
         }
     </style>
 </head>
@@ -609,8 +566,8 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
                                     <strong><?php echo h($ev['title']); ?></strong>
                                     <span class="muted cal-upcoming-card-meta">
                                         <?php if ($ev['course_code']): ?><?php echo h($ev['course_code']); ?> · <?php endif; ?>
-                                        <?php echo date('g:i A', strtotime($ev['start_datetime'])); ?>
-                                        <?php if ($ev['location']): ?> · <i class="bi bi-geo-alt-fill"></i> <?php echo h($ev['location']); ?><?php endif; ?>
+                                    <?php echo date('g:i A', strtotime($ev['start_datetime'])); ?>
+                                    <?php if ($ev['location']): ?> · <i class="bi bi-geo-alt-fill"></i> <?php echo h($ev['location']); ?><?php endif; ?>
                                     </span>
                                     <span class="cal-upcoming-card-badges">
                                         <?php if ($ev['is_recurring']): ?>
@@ -673,27 +630,13 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
                             <input type="date" name="start_date" id="fStartDate" required>
                         </label>
                         <label>Start time <span class="req">*</span>
-                            <div class="time-input-wrap">
-                                <input type="number" id="fStartH" min="0" max="23" placeholder="HH"
-                                    class="time-part" aria-label="Start hour">
-                                <span class="time-colon">:</span>
-                                <input type="number" id="fStartM" min="0" max="59" placeholder="MM"
-                                    class="time-part" aria-label="Start minute">
-                                <span class="time-ampm" id="fStartAMPM">AM</span>
-                            </div>
+                            <input type="time" id="fStartTime" class="time-input-wrap" aria-label="Start time" required>
                         </label>
                         <label>End date <span class="req">*</span>
                             <input type="date" name="end_date" id="fEndDate" required>
                         </label>
                         <label>End time <span class="req">*</span>
-                            <div class="time-input-wrap">
-                                <input type="number" id="fEndH" min="0" max="23" placeholder="HH"
-                                    class="time-part" aria-label="End hour">
-                                <span class="time-colon">:</span>
-                                <input type="number" id="fEndM" min="0" max="59" placeholder="MM"
-                                    class="time-part" aria-label="End minute">
-                                <span class="time-ampm" id="fEndAMPM">AM</span>
-                            </div>
+                            <input type="time" id="fEndTime" class="time-input-wrap" aria-label="End time" required>
                         </label>
                         <!-- Hidden combined fields sent to calendar_save.php -->
                         <input type="hidden" name="start_datetime" id="fStart">
@@ -810,41 +753,24 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
         // Reference date for the Week/Day tab views — defaults to today when
         // viewing the current month, otherwise the 1st of the viewed month,
         // and updates whenever a day is clicked (main grid or mini calendar).
-        let selectedDate = (VIEW_YEAR === REAL_TODAY_YEAR && VIEW_MONTH === REAL_TODAY_MONTH)
-            ? TODAY_STR
-            : `${VIEW_YEAR}-${String(VIEW_MONTH).padStart(2, '0')}-01`;
+        let selectedDate = (VIEW_YEAR === REAL_TODAY_YEAR && VIEW_MONTH === REAL_TODAY_MONTH) ?
+            TODAY_STR :
+            `${VIEW_YEAR}-${String(VIEW_MONTH).padStart(2, '0')}-01`;
 
         // ── Time input helpers — global scope so all modal functions can access them ──
-        function getTimePart(id, min, max, def) {
-            const el = document.getElementById(id);
-            if (!el) return String(def).padStart(2, '0');
-            let v = parseInt(el.value, 10);
-            if (isNaN(v)) v = def;
-            v = Math.max(min, Math.min(max, v));
-            el.value = v;
-            return String(v).padStart(2, '0');
-        }
-
-        function updateAMPM(hourId, ampmId) {
-            const h = parseInt(document.getElementById(hourId)?.value, 10);
-            const el = document.getElementById(ampmId);
-            if (el && !isNaN(h)) el.textContent = h < 12 ? 'AM' : 'PM';
-        }
-
+        // A native <input type="time"> already gives/takes a zero-padded
+        // 24-hour "HH:MM" string directly, so these just read/write it —
+        // kept as named helpers (rather than inlined) so every call site
+        // that used the old 3-part hour/minute/AM-PM widget didn't need to
+        // change too.
         function setTimeInputs(prefix, hhmm) {
-            if (!hhmm) return;
-            const [h, m] = hhmm.split(':').map(Number);
-            const hEl = document.getElementById(prefix + 'H');
-            const mEl = document.getElementById(prefix + 'M');
-            if (hEl) hEl.value = h;
-            if (mEl) mEl.value = String(m).padStart(2, '0');
-            updateAMPM(prefix + 'H', prefix + 'AMPM');
+            const el = document.getElementById(prefix + 'Time');
+            if (el && hhmm) el.value = hhmm;
         }
 
         function getTimeString(prefix) {
-            const h = getTimePart(prefix + 'H', 0, 23, 8);
-            const m = getTimePart(prefix + 'M', 0, 59, 0);
-            return h + ':' + m;
+            const el = document.getElementById(prefix + 'Time');
+            return (el && el.value) ? el.value : '00:00';
         }
 
         // ── Modal helpers ──────────────────────────────────────────────────────────
@@ -934,14 +860,6 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
             setTimeInputs('fStart', '08:00');
             setTimeInputs('fEnd', '09:00');
 
-            // Live AM/PM update
-            ['fStartH', 'fStartM', 'fEndH', 'fEndM'].forEach(id => {
-                document.getElementById(id)?.addEventListener('input', () => {
-                    if (id.startsWith('fStart')) updateAMPM('fStartH', 'fStartAMPM');
-                    else updateAMPM('fEndH', 'fEndAMPM');
-                });
-            });
-
             // ── Sync hidden datetime fields before form submit ─────────────────
             document.getElementById('eventForm').addEventListener('submit', function(e) {
                 const sd = document.getElementById('fStartDate').value;
@@ -974,16 +892,12 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
                 const sd = document.getElementById('fStartDate').value;
                 if (!sd) return;
                 document.getElementById('fEndDate').value = sd;
-                const sh = parseInt(document.getElementById('fStartH')?.value, 10) || 8;
-                const sm = parseInt(document.getElementById('fStartM')?.value, 10) || 0;
+                const [sh, sm] = (document.getElementById('fStartTime').value || '08:00').split(':').map(Number);
                 const endH = (sh + 1) % 24;
-                document.getElementById('fEndH').value = endH;
-                document.getElementById('fEndM').value = String(sm).padStart(2, '0');
-                updateAMPM('fEndH', 'fEndAMPM');
+                document.getElementById('fEndTime').value = String(endH).padStart(2, '0') + ':' + String(sm).padStart(2, '0');
             }
             document.getElementById('fStartDate').addEventListener('change', syncEndFromStart);
-            document.getElementById('fStartH').addEventListener('change', syncEndFromStart);
-            document.getElementById('fStartM').addEventListener('change', syncEndFromStart);
+            document.getElementById('fStartTime').addEventListener('change', syncEndFromStart);
 
             // ── Month / Week / Day view toggle ─────────────────────────────────
             document.querySelectorAll('.cal-view-btn').forEach(btn => {
@@ -998,7 +912,9 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
 
             // ── Mini calendar day click (adjacent-month <a> days just navigate) ─
             document.querySelectorAll('button.cal-mini-day').forEach(btn => {
-                btn.addEventListener('click', () => selectDay(btn.dataset.date, { scroll: true }));
+                btn.addEventListener('click', () => selectDay(btn.dataset.date, {
+                    scroll: true
+                }));
             });
 
             // ── Filters card collapse ───────────────────────────────────────────
@@ -1225,7 +1141,10 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
                 let chips = '';
                 dayEvs.forEach(ev => {
                     const color = TYPE_COLORS[ev.event_type] || '#64748b';
-                    const timeStr = new Date(ev.start_datetime.replace(' ', 'T')).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' });
+                    const timeStr = new Date(ev.start_datetime.replace(' ', 'T')).toLocaleTimeString('en-NG', {
+                        hour: 'numeric',
+                        minute: '2-digit'
+                    });
                     chips += `<button class="cal-event-chip" style="border-left-color:${color};background:${color}18;" data-type="${ev.event_type}" onclick="openEventDetail(${ev.id})" title="${ev.title}">
                         <span class="chip-dot" style="background:${color}"></span>
                         <span class="chip-time">${timeStr}</span>
@@ -1266,7 +1185,10 @@ $upcomingForSidebar = upcoming_events_for($user, 20);
             const cell = document.querySelector(`.cal-day[data-date="${dateStr}"]`);
             if (cell) {
                 cell.classList.add('cal-day--selected');
-                if (opts.scroll) cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (opts.scroll) cell.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
             }
             document.querySelectorAll('.cal-mini-day').forEach(el => {
                 el.classList.toggle('cal-mini-day--selected', el.dataset.date === dateStr);

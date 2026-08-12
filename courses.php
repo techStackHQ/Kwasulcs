@@ -27,7 +27,11 @@ sort($categories);
 <html lang="en">
 
 <head>
-    <?php $pageTitle = 'Courses'; include __DIR__ . '/partials/head.php'; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+    <?php $pageTitle = 'Courses';
+    include __DIR__ . '/partials/head.php'; ?>
 </head>
 
 <body class="app-body">
@@ -178,7 +182,7 @@ sort($categories);
     </main>
 
     <script>
-        (function () {
+        (function() {
             const rowsWrap = document.getElementById('courseRows');
             const rows = Array.from(rowsWrap.querySelectorAll('.course-row'));
             const searchInput = document.getElementById('courseSearchInput');
@@ -194,11 +198,11 @@ sort($categories);
                 const sem = semesterFilter.value;
                 const status = statusFilter.value;
                 let anyVisible = false;
-                rows.forEach(function (row) {
-                    const match = (!q || row.dataset.search.includes(q))
-                        && (!cat || row.dataset.category === cat)
-                        && (!sem || row.dataset.semester === sem)
-                        && (!status || row.dataset.status === status);
+                rows.forEach(function(row) {
+                    const match = (!q || row.dataset.search.includes(q)) &&
+                        (!cat || row.dataset.category === cat) &&
+                        (!sem || row.dataset.semester === sem) &&
+                        (!status || row.dataset.status === status);
                     row.hidden = !match;
                     if (match) anyVisible = true;
                 });
@@ -207,7 +211,7 @@ sort($categories);
 
             function applySort() {
                 const mode = sortSelect.value;
-                const sorted = rows.slice().sort(function (a, b) {
+                const sorted = rows.slice().sort(function(a, b) {
                     if (mode === 'code') return a.dataset.code.localeCompare(b.dataset.code);
                     if (mode === 'title') return a.dataset.title.localeCompare(b.dataset.title);
                     return +b.dataset.created - +a.dataset.created;
@@ -215,7 +219,7 @@ sort($categories);
                 sorted.forEach(row => rowsWrap.appendChild(row));
             }
 
-            [searchInput, categoryFilter, semesterFilter, statusFilter].forEach(function (el) {
+            [searchInput, categoryFilter, semesterFilter, statusFilter].forEach(function(el) {
                 el.addEventListener('input', applyFilters);
                 el.addEventListener('change', applyFilters);
             });
@@ -223,17 +227,17 @@ sort($categories);
 
             // Whole-row click opens the course, except for clicks that
             // originate inside the overflow menu (button or its dropdown).
-            rows.forEach(function (row) {
-                row.addEventListener('click', function (e) {
+            rows.forEach(function(row) {
+                row.addEventListener('click', function(e) {
                     if (e.target.closest('.course-row-menu-wrap')) return;
                     window.location.href = row.dataset.href;
                 });
             });
 
             // Overflow menu open/close
-            document.querySelectorAll('.course-row-menu-btn').forEach(function (btn) {
+            document.querySelectorAll('.course-row-menu-btn').forEach(function(btn) {
                 const menu = btn.nextElementSibling;
-                btn.addEventListener('click', function (e) {
+                btn.addEventListener('click', function(e) {
                     e.stopPropagation();
                     const wasOpen = !menu.hidden;
                     document.querySelectorAll('.course-row-menu').forEach(m => m.hidden = true);
@@ -242,7 +246,7 @@ sort($categories);
                     btn.setAttribute('aria-expanded', wasOpen ? 'false' : 'true');
                 });
             });
-            document.addEventListener('click', function () {
+            document.addEventListener('click', function() {
                 document.querySelectorAll('.course-row-menu').forEach(m => m.hidden = true);
                 document.querySelectorAll('.course-row-menu-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
             });

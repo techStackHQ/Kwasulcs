@@ -6,7 +6,8 @@
  */
 require_once __DIR__ . '/config.php';
 require_login();
-ensure_chat_tables();
+// ensure_chat_tables() removed here — schema already established in
+// production. See config.php's ensure_chat_tables().
 
 header('Content-Type: application/json');
 

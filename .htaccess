@@ -1,0 +1,6 @@
+# Defense in depth for .env (and .env.* variants) and config.php — nothing
+# should ever load these over HTTP; they're only ever require()'d
+# in-process by PHP. Same deny-all pattern as private_uploads/.htaccess.
+<FilesMatch "^(\.env(\..*)?|config\.php)$">
+    Require all denied
+</FilesMatch>

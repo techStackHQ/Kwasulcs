@@ -6,7 +6,10 @@
  */
 require_once __DIR__ . '/config.php';
 require_login();
-ensure_chat_tables();
+// ensure_chat_tables() removed here — this endpoint is polled every 4s
+// from an open chat thread, so it was re-running ~11 CREATE/ALTER TABLE
+// statements every 4 seconds. Schema already established in production.
+// See config.php's ensure_chat_tables().
 
 header('Content-Type: application/json');
 
